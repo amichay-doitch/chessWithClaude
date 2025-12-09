@@ -100,10 +100,10 @@ class SetupScreen:
 
         # Time limit buttons
         self.time_buttons = []
-        time_options = [("No Limit", None), ("1 sec", 1), ("5 sec", 5), ("10 sec", 10), ("30 sec", 30)]
+        time_options = [("No Limit", None), ("1 sec", 1), ("5 sec", 5), ("10 sec", 10)]
         for i, (label, time_val) in enumerate(time_options):
-            x = center_x - 270 + i * 135
-            btn = Button(x, 500, 125, 45, label, lambda t=time_val: self.set_time(t))
+            x = center_x - 270 + i * 100
+            btn = Button(x, 500, 95, 45, label, lambda t=time_val: self.set_time(t))
             self.time_buttons.append((btn, time_val))
 
         # Start button
@@ -214,6 +214,7 @@ class ChessGUI:
         self.engine_result = None
         self.status_message = "Your turn"
         self.return_to_setup = False  # Flag to return to setup screen
+        self.move_scroll_offset = 0  # For scrolling through move history
 
         # Create piece font (larger for rendering) - try multiple fonts
         piece_font_names = ['Segoe UI Symbol', 'Arial Unicode MS', 'DejaVu Sans', 'FreeSans']
@@ -271,9 +272,20 @@ class ChessGUI:
             threading.Thread(target=self._calculate_hint, daemon=True).start()
 
     def _calculate_hint(self):
-        result = self.engine.search(self.board.board)
-        if result:
-            self.status_message = f"Hint: {result.best_move}"
+        try:
+            board_copy = self.board.board.copy()
+            # Use a lower depth for quick hints
+            result = self.engine.search(board_copy, depth=4)
+            if result and result.best_move:
+                move_str = str(result.best_move)
+                # Convert to more readable format
+                from_sq = chess.square_name(result.best_move.from_square)
+                to_sq = chess.square_name(result.best_move.to_square)
+                self.status_message = f"Hint: {from_sq} to {to_sq}"
+            else:
+                self.status_message = "No hint available"
+        except Exception as e:
+            self.status_message = f"Hint error: {str(e)[:50]}"
 
     def get_square_from_pos(self, pos):
         x, y = pos
@@ -445,7 +457,7 @@ class ChessGUI:
             thinking = FONT_SMALL.render("● Thinking...", True, (100, 180, 255))
             self.screen.blit(thinking, (BOARD_SIZE + 20, info_y + 20))
 
-        # Move history - more compact
+        # Move history - more compact with proper chess notation
         history_y = 170
         pygame.draw.line(self.screen, (50, 50, 50),
                         (BOARD_SIZE + 15, history_y), (BOARD_SIZE + PANEL_WIDTH - 15, history_y), 1)
@@ -453,11 +465,47 @@ class ChessGUI:
         self.screen.blit(FONT_SMALL.render("Move History", True, (140, 140, 140)),
                         (BOARD_SIZE + 20, history_y + 8))
 
-        moves = list(self.board.board.move_stack)[-9:]  # Show last 9 moves
-        for i, move in enumerate(moves):
-            move_num = len(self.board.board.move_stack) - len(moves) + i + 1
-            move_text = FONT_SMALL.render(f"{move_num}. {str(move)}", True, (190, 190, 190))
-            self.screen.blit(move_text, (BOARD_SIZE + 22, history_y + 35 + i * 18))
+        # Format moves in chess notation (1. e4 e5, 2. d4 d5, etc.)
+        all_moves = list(self.board.board.move_stack)
+        move_pairs = []
+        for i in range(0, len(all_moves), 2):
+            move_num = (i // 2) + 1
+            white_move = str(all_moves[i])
+            black_move = str(all_moves[i + 1]) if i + 1 < len(all_moves) else ""
+            if black_move:
+                move_pairs.append(f"{move_num}. {white_move} {black_move}")
+            else:
+                move_pairs.append(f"{move_num}. {white_move}")
+
+        # Show up to 9 lines with scrolling
+        max_visible = 9
+        total_moves = len(move_pairs)
+
+        # When offset is 0, show the most recent moves
+        # When offset increases, show older moves
+        if total_moves <= max_visible:
+            # Show all moves
+            visible_moves = move_pairs
+            start_idx = 0
+        else:
+            # Calculate which moves to show based on scroll offset
+            end_idx = total_moves - self.move_scroll_offset
+            start_idx = max(0, end_idx - max_visible)
+            visible_moves = move_pairs[start_idx:end_idx]
+
+        for i, move_text in enumerate(visible_moves):
+            text = FONT_SMALL.render(move_text, True, (190, 190, 190))
+            self.screen.blit(text, (BOARD_SIZE + 22, history_y + 35 + i * 18))
+
+        # Show scroll indicators if needed
+        if self.move_scroll_offset > 0:
+            # Can scroll down to see newer moves
+            down_arrow = FONT_SMALL.render("▼", True, (100, 180, 255))
+            self.screen.blit(down_arrow, (BOARD_SIZE + 200, history_y + 35 + 8 * 18))
+        if total_moves > max_visible and start_idx > 0:
+            # Can scroll up to see older moves
+            up_arrow = FONT_SMALL.render("▲", True, (100, 180, 255))
+            self.screen.blit(up_arrow, (BOARD_SIZE + 200, history_y + 35))
 
         # Action buttons - more compact
         button_y = 385
@@ -597,6 +645,15 @@ class ChessGUI:
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:  # Left click
                         self.handle_click(event.pos)
+                    elif event.button == 4:  # Mouse wheel up
+                        # Scroll up in move history
+                        all_moves = list(self.board.board.move_stack)
+                        move_pairs_count = (len(all_moves) + 1) // 2
+                        if move_pairs_count > 9:
+                            self.move_scroll_offset = min(self.move_scroll_offset + 1, move_pairs_count - 9)
+                    elif event.button == 5:  # Mouse wheel down
+                        # Scroll down in move history
+                        self.move_scroll_offset = max(0, self.move_scroll_offset - 1)
 
                 if event.type == pygame.MOUSEMOTION:
                     for button in self.buttons + self.depth_buttons:
