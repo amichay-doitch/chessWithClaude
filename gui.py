@@ -100,7 +100,7 @@ class SetupScreen:
 
         # Time limit buttons
         self.time_buttons = []
-        time_options = [("No Limit", None), ("5 sec", 5), ("10 sec", 10), ("30 sec", 30)]
+        time_options = [("No Limit", None), ("1 sec", 1), ("5 sec", 5), ("10 sec", 10), ("30 sec", 30)]
         for i, (label, time_val) in enumerate(time_options):
             x = center_x - 270 + i * 135
             btn = Button(x, 500, 125, 45, label, lambda t=time_val: self.set_time(t))
