@@ -82,7 +82,7 @@ class ChessGUI:
         self.legal_moves_for_selected = []
         self.last_move = None
         self.player_is_white = True
-        self.flipped = False
+        self.flipped = False 
 
         self.engine_thinking = False
         self.engine_done = False
