@@ -12,20 +12,22 @@ from engine import ChessEngine, SearchResult
 # Initialize pygame
 pygame.init()
 
-# Colors - Chess.com style
+# Colors - Polished chess.com style
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-LIGHT_SQUARE = (238, 238, 210)  # Chess.com light squares
-DARK_SQUARE = (118, 150, 86)     # Chess.com dark squares
-HIGHLIGHT = (186, 202, 68)       # Yellow-green for legal moves
-SELECTED = (246, 246, 130)       # Bright yellow for selected
-LAST_MOVE = (205, 210, 106)      # Muted yellow for last move
-CHECK_COLOR = (235, 97, 80)      # Red for check
-BUTTON_COLOR = (130, 151, 105)   # Green matching dark squares
-BUTTON_HOVER = (150, 171, 125)   # Lighter green on hover
+LIGHT_SQUARE = (240, 217, 181)   # Warm cream
+DARK_SQUARE = (181, 136, 99)     # Warm brown
+HIGHLIGHT = (130, 151, 105)      # Soft green for legal moves
+SELECTED = (246, 246, 105)       # Bright yellow for selected
+LAST_MOVE = (170, 162, 58)       # Golden yellow for last move (both squares)
+CHECK_COLOR = (231, 76, 60)      # Bright red for check
+BUTTON_COLOR = (52, 73, 94)      # Dark blue-gray
+BUTTON_HOVER = (71, 101, 130)    # Lighter blue on hover
 TEXT_COLOR = (50, 50, 50)
-PANEL_BG = (49, 46, 43)          # Dark panel background
-PANEL_TEXT = (220, 220, 220)     # Light text on dark panel
+PANEL_BG = (38, 38, 38)          # Darker panel background
+PANEL_TEXT = (230, 230, 230)     # Light text on dark panel
+MOVE_DOT = (80, 80, 80, 180)     # Semi-transparent dots for legal moves
+CAPTURE_RING = (80, 80, 80, 200) # Semi-transparent ring for captures
 
 # Board settings
 SQUARE_SIZE = 80
@@ -98,7 +100,7 @@ class SetupScreen:
 
         # Time limit buttons
         self.time_buttons = []
-        time_options = [("No Limit", None), ("1 sec", 1), ("5 sec", 5), ("10 sec", 10), ("30 sec", 30)]
+        time_options = [("No Limit", None), ("5 sec", 5), ("10 sec", 10), ("30 sec", 30)]
         for i, (label, time_val) in enumerate(time_options):
             x = center_x - 270 + i * 135
             btn = Button(x, 500, 125, 45, label, lambda t=time_val: self.set_time(t))
@@ -213,8 +215,17 @@ class ChessGUI:
         self.status_message = "Your turn"
         self.return_to_setup = False  # Flag to return to setup screen
 
-        # Create piece font (larger for rendering)
-        self.piece_font = pygame.font.SysFont('Segoe UI Symbol', 64)
+        # Create piece font (larger for rendering) - try multiple fonts
+        piece_font_names = ['Segoe UI Symbol', 'Arial Unicode MS', 'DejaVu Sans', 'FreeSans']
+        self.piece_font = None
+        for font_name in piece_font_names:
+            try:
+                self.piece_font = pygame.font.SysFont(font_name, 70)
+                break
+            except:
+                continue
+        if self.piece_font is None:
+            self.piece_font = pygame.font.SysFont(None, 70)
 
         # Buttons
         self.buttons = [
@@ -327,11 +338,6 @@ class ChessGUI:
                 if square == self.selected_square:
                     color = SELECTED
 
-                # Highlight legal moves
-                for move in self.legal_moves_for_selected:
-                    if move.to_square == square:
-                        color = HIGHLIGHT
-
                 # Highlight king in check
                 if self.board.is_check():
                     king_square = self.board.board.king(self.board.board.turn)
@@ -346,87 +352,126 @@ class ChessGUI:
                     piece_char = piece.symbol()
                     piece_unicode = PIECE_UNICODE[piece_char]
 
-                    # Render piece
+                    # Render piece with clean, sharp appearance
                     if piece.color == chess.WHITE:
-                        text_surface = self.piece_font.render(piece_unicode, True, WHITE)
-                        # Add black outline for white pieces
-                        outline_surface = self.piece_font.render(piece_unicode, True, BLACK)
+                        # White pieces: bright white with strong dark outline
+                        text_surface = self.piece_font.render(piece_unicode, True, (255, 255, 255))
+                        outline_surface = self.piece_font.render(piece_unicode, True, (30, 30, 30))
                         text_rect = text_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
-                        # Draw outline
-                        for dx, dy in [(-1, -1), (-1, 1), (1, -1), (1, 1), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        # Draw thick outline for clarity
+                        for dx, dy in [(-2, -2), (-2, 2), (2, -2), (2, 2), (-2, 0), (2, 0), (0, -2), (0, 2),
+                                      (-1, -1), (-1, 1), (1, -1), (1, 1), (-1, 0), (1, 0), (0, -1), (0, 1)]:
                             self.screen.blit(outline_surface, (text_rect.x + dx, text_rect.y + dy))
                         self.screen.blit(text_surface, text_rect)
                     else:
-                        text_surface = self.piece_font.render(piece_unicode, True, BLACK)
+                        # Black pieces: solid black, no blur
+                        text_surface = self.piece_font.render(piece_unicode, True, (0, 0, 0))
                         text_rect = text_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
                         self.screen.blit(text_surface, text_rect)
 
-        # Draw coordinates
+        # Draw legal move indicators (dots and rings) on top of pieces
+        for move in self.legal_moves_for_selected:
+            dest_square = move.to_square
+            pos = self.get_pos_from_square(dest_square)
+            center_x = pos[0] + SQUARE_SIZE // 2
+            center_y = pos[1] + SQUARE_SIZE // 2
+
+            # Check if destination has a piece (capture)
+            if self.board.board.piece_at(dest_square):
+                # Draw ring for capture
+                pygame.draw.circle(self.screen, (60, 60, 60), (center_x, center_y), SQUARE_SIZE // 2 - 4, 5)
+            else:
+                # Draw dot for empty square
+                pygame.draw.circle(self.screen, (80, 80, 80), (center_x, center_y), SQUARE_SIZE // 6)
+
+        # Draw coordinates with better contrast
+        coord_font = pygame.font.SysFont('Arial', 14, bold=True)
         for i in range(8):
             # Files (a-h) - flip when viewing from black's perspective
             if self.flipped:
                 file_label = chr(ord('h') - i)  # h to a (right to left)
             else:
                 file_label = chr(ord('a') + i)  # a to h (left to right)
-            text = FONT_SMALL.render(file_label, True, TEXT_COLOR)
-            self.screen.blit(text, (i * SQUARE_SIZE + SQUARE_SIZE - 15, BOARD_SIZE - 18))
+
+            # Choose color based on square color (bottom right corner)
+            square_is_light = (7 + i) % 2 == 0
+            coord_color = DARK_SQUARE if square_is_light else LIGHT_SQUARE
+            text = coord_font.render(file_label, True, coord_color)
+            self.screen.blit(text, (i * SQUARE_SIZE + SQUARE_SIZE - 13, BOARD_SIZE - 16))
 
             # Ranks (1-8) - flip vertically when board is flipped
             if self.flipped:
                 rank_label = str(i + 1)  # 1 at top, 8 at bottom when flipped
             else:
                 rank_label = str(8 - i)  # 8 at top, 1 at bottom normally
-            text = FONT_SMALL.render(rank_label, True, TEXT_COLOR)
-            self.screen.blit(text, (3, i * SQUARE_SIZE + 3))
+
+            # Choose color based on square color (left column)
+            square_is_light = i % 2 == 0
+            coord_color = DARK_SQUARE if square_is_light else LIGHT_SQUARE
+            text = coord_font.render(rank_label, True, coord_color)
+            self.screen.blit(text, (5, i * SQUARE_SIZE + 5))
 
     def draw_panel(self):
-        # Panel background - dark chess.com style
+        # Panel background - dark modern style
         pygame.draw.rect(self.screen, PANEL_BG, (BOARD_SIZE, 0, PANEL_WIDTH, WINDOW_HEIGHT))
-        pygame.draw.line(self.screen, DARK_SQUARE, (BOARD_SIZE, 0), (BOARD_SIZE, WINDOW_HEIGHT), 2)
 
-        # Title
-        title = FONT_LARGE.render("Chess Engine", True, PANEL_TEXT)
-        self.screen.blit(title, (BOARD_SIZE + 20, 20))
+        # Subtle separator line
+        pygame.draw.line(self.screen, (60, 60, 60), (BOARD_SIZE, 0), (BOARD_SIZE, WINDOW_HEIGHT), 1)
 
-        # Status
-        status = FONT.render(self.status_message, True, PANEL_TEXT)
-        self.screen.blit(status, (BOARD_SIZE + 20, 70))
+        # Title - more compact
+        title = FONT_LARGE.render("Chess", True, PANEL_TEXT)
+        self.screen.blit(title, (BOARD_SIZE + 20, 15))
 
-        # Turn indicator
-        turn_text = f"Turn: {self.board.get_turn()}"
-        turn = FONT.render(turn_text, True, PANEL_TEXT)
-        self.screen.blit(turn, (BOARD_SIZE + 20, 100))
+        # Turn indicator - compact, no redundant "Your turn"
+        turn_color = (230, 230, 230) if self.board.board.turn == chess.WHITE else (180, 180, 180)
+        turn_text = f"{'White' if self.board.board.turn == chess.WHITE else 'Black'} to move"
+        turn = FONT.render(turn_text, True, turn_color)
+        self.screen.blit(turn, (BOARD_SIZE + 20, 55))
 
-        # Game state
+        # Game state alerts
         if self.board.is_game_over():
-            result = FONT.render(self.board.get_result(), True, CHECK_COLOR)
-            self.screen.blit(result, (BOARD_SIZE + 20, 130))
+            result = FONT_LARGE.render(self.board.get_result(), True, CHECK_COLOR)
+            self.screen.blit(result, (BOARD_SIZE + 20, 85))
         elif self.board.is_check():
-            check = FONT.render("CHECK!", True, CHECK_COLOR)
-            self.screen.blit(check, (BOARD_SIZE + 20, 130))
+            check = FONT_LARGE.render("CHECK!", True, CHECK_COLOR)
+            self.screen.blit(check, (BOARD_SIZE + 20, 85))
 
-        # Engine info
-        info_y = 180
-        self.screen.blit(FONT_SMALL.render(f"Engine Depth: {self.engine.max_depth}", True, PANEL_TEXT),
-                        (BOARD_SIZE + 20, info_y))
+        # Engine status - compact
+        info_y = 120
+        depth_text = FONT_SMALL.render(f"Engine: Depth {self.engine.max_depth}", True, (180, 180, 180))
+        self.screen.blit(depth_text, (BOARD_SIZE + 20, info_y))
 
         if self.engine_thinking:
-            thinking = FONT.render("Engine thinking...", True, (100, 180, 255))
-            self.screen.blit(thinking, (BOARD_SIZE + 20, info_y + 30))
+            thinking = FONT_SMALL.render("● Thinking...", True, (100, 180, 255))
+            self.screen.blit(thinking, (BOARD_SIZE + 20, info_y + 20))
 
-        # Move history (last 10 moves)
-        self.screen.blit(FONT.render("Recent moves:", True, PANEL_TEXT), (BOARD_SIZE + 20, 250))
-        moves = list(self.board.board.move_stack)[-10:]
+        # Move history - more compact
+        history_y = 170
+        pygame.draw.line(self.screen, (50, 50, 50),
+                        (BOARD_SIZE + 15, history_y), (BOARD_SIZE + PANEL_WIDTH - 15, history_y), 1)
+
+        self.screen.blit(FONT_SMALL.render("Move History", True, (140, 140, 140)),
+                        (BOARD_SIZE + 20, history_y + 8))
+
+        moves = list(self.board.board.move_stack)[-9:]  # Show last 9 moves
         for i, move in enumerate(moves):
-            move_text = FONT_SMALL.render(f"{len(self.board.board.move_stack) - len(moves) + i + 1}. {move}", True, PANEL_TEXT)
-            self.screen.blit(move_text, (BOARD_SIZE + 20, 280 + i * 20))
+            move_num = len(self.board.board.move_stack) - len(moves) + i + 1
+            move_text = FONT_SMALL.render(f"{move_num}. {str(move)}", True, (190, 190, 190))
+            self.screen.blit(move_text, (BOARD_SIZE + 22, history_y + 35 + i * 18))
 
-        # Draw buttons
+        # Action buttons - more compact
+        button_y = 385
+        pygame.draw.line(self.screen, (50, 50, 50),
+                        (BOARD_SIZE + 15, button_y - 5), (BOARD_SIZE + PANEL_WIDTH - 15, button_y - 5), 1)
+
         for button in self.buttons:
             button.draw(self.screen)
 
-        # Depth label and buttons
-        self.screen.blit(FONT_SMALL.render("Set Difficulty:", True, PANEL_TEXT), (BOARD_SIZE + 20, 495))
+        # Difficulty section - compact
+        pygame.draw.line(self.screen, (50, 50, 50),
+                        (BOARD_SIZE + 15, 490), (BOARD_SIZE + PANEL_WIDTH - 15, 490), 1)
+        self.screen.blit(FONT_SMALL.render("Difficulty", True, (140, 140, 140)),
+                        (BOARD_SIZE + 20, 498))
         for button in self.depth_buttons:
             button.draw(self.screen)
 
