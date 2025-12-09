@@ -80,7 +80,7 @@ class SetupScreen:
         self.screen = screen
         self.selected_color = chess.WHITE  # Default to white
         self.selected_depth = 5  # Default depth
-        self.time_limit = None  # No time limit by default
+        self.time_limit = 1  # 1 second limit is the default
 
         # Setup buttons
         center_x = WINDOW_WIDTH // 2
@@ -215,6 +215,7 @@ class ChessGUI:
         self.status_message = "Your turn"
         self.return_to_setup = False  # Flag to return to setup screen
         self.move_scroll_offset = 0  # For scrolling through move history
+        self.hint_thinking = False  # Track hint calculation
 
         # Create piece font (larger for rendering) - try multiple fonts
         piece_font_names = ['Segoe UI Symbol', 'Arial Unicode MS', 'DejaVu Sans', 'FreeSans']
@@ -268,24 +269,31 @@ class ChessGUI:
 
     def get_hint(self):
         if not self.engine_thinking and not self.board.is_game_over():
-            self.status_message = "Calculating hint..."
+            self.status_message = "💡 Calculating hint..."
+            self.hint_thinking = True
             threading.Thread(target=self._calculate_hint, daemon=True).start()
 
     def _calculate_hint(self):
         try:
             board_copy = self.board.board.copy()
-            # Use a lower depth for quick hints
-            result = self.engine.search(board_copy, depth=4)
+            # Use depth 3 with 2 second time limit for quick hints
+            from engine import ChessEngine
+            hint_engine = ChessEngine(max_depth=3, time_limit=2.0)
+            result = hint_engine.search(board_copy)
+
             if result and result.best_move:
-                move_str = str(result.best_move)
                 # Convert to more readable format
                 from_sq = chess.square_name(result.best_move.from_square)
                 to_sq = chess.square_name(result.best_move.to_square)
-                self.status_message = f"Hint: {from_sq} to {to_sq}"
+                piece = board_copy.piece_at(result.best_move.from_square)
+                piece_name = piece.symbol().upper() if piece else ""
+                self.status_message = f"💡 Hint: {piece_name}{from_sq}→{to_sq}"
             else:
                 self.status_message = "No hint available"
         except Exception as e:
-            self.status_message = f"Hint error: {str(e)[:50]}"
+            self.status_message = f"Hint error: {str(e)[:40]}"
+        finally:
+            self.hint_thinking = False
 
     def get_square_from_pos(self, pos):
         x, y = pos
@@ -456,6 +464,9 @@ class ChessGUI:
         if self.engine_thinking:
             thinking = FONT_SMALL.render("● Thinking...", True, (100, 180, 255))
             self.screen.blit(thinking, (BOARD_SIZE + 20, info_y + 20))
+        elif self.hint_thinking:
+            hint_status = FONT_SMALL.render("💡 Calculating hint...", True, (255, 200, 50))
+            self.screen.blit(hint_status, (BOARD_SIZE + 20, info_y + 20))
 
         # Move history - more compact with proper chess notation
         history_y = 170
