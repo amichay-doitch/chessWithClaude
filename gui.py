@@ -216,6 +216,9 @@ class ChessGUI:
         self.return_to_setup = False  # Flag to return to setup screen
         self.move_scroll_offset = 0  # For scrolling through move history
         self.hint_thinking = False  # Track hint calculation
+        self.hint_message = None  # Store hint message separately
+        self.viewing_history = False  # True when viewing past positions
+        self.current_move_index = None  # Index of move being viewed (None = current position)
 
         # Create piece font (larger for rendering) - try multiple fonts
         piece_font_names = ['Segoe UI Symbol', 'Arial Unicode MS', 'DejaVu Sans', 'FreeSans']
@@ -237,6 +240,10 @@ class ChessGUI:
             Button(BOARD_SIZE + 130, 450, 100, 40, "Hint", self.get_hint),
         ]
 
+        # Scroll buttons for move history - positioned at the right edge of panel
+        self.scroll_up_button = Button(BOARD_SIZE + 215, 178, 25, 25, "▲", self.scroll_history_up)
+        self.scroll_down_button = Button(BOARD_SIZE + 215, 355, 25, 25, "▼", self.scroll_history_down)
+
         # Depth buttons
         self.depth_buttons = []
         for i, d in enumerate([3, 5, 7]):
@@ -246,6 +253,34 @@ class ChessGUI:
     def set_depth(self, depth):
         self.engine.max_depth = depth
         self.status_message = f"Engine depth set to {depth}"
+
+    def scroll_history_up(self):
+        """Go back one move in history"""
+        all_moves = list(self.board.board.move_stack)
+        if len(all_moves) == 0:
+            return
+
+        # If viewing current position, start from last move
+        if self.current_move_index is None:
+            self.current_move_index = len(all_moves) - 1
+            self.viewing_history = True
+        elif self.current_move_index > 0:
+            self.current_move_index -= 1
+
+
+    def scroll_history_down(self):
+        """Go forward one move in history"""
+        all_moves = list(self.board.board.move_stack)
+        if not self.viewing_history or self.current_move_index is None:
+            return
+
+        # Move forward
+        if self.current_move_index < len(all_moves) - 1:
+            self.current_move_index += 1
+        else:
+            # Reached current position
+            self.viewing_history = False
+            self.current_move_index = None
 
     def new_game(self):
         # Signal to return to setup screen
@@ -269,7 +304,7 @@ class ChessGUI:
 
     def get_hint(self):
         if not self.engine_thinking and not self.board.is_game_over():
-            self.status_message = "💡 Calculating hint..."
+            self.hint_message = "Calculating hint..."
             self.hint_thinking = True
             threading.Thread(target=self._calculate_hint, daemon=True).start()
 
@@ -287,11 +322,11 @@ class ChessGUI:
                 to_sq = chess.square_name(result.best_move.to_square)
                 piece = board_copy.piece_at(result.best_move.from_square)
                 piece_name = piece.symbol().upper() if piece else ""
-                self.status_message = f"💡 Hint: {piece_name}{from_sq}→{to_sq}"
+                self.hint_message = f"Hint: {piece_name}{from_sq}->{to_sq}"
             else:
-                self.status_message = "No hint available"
+                self.hint_message = "No hint available"
         except Exception as e:
-            self.status_message = f"Hint error: {str(e)[:40]}"
+            self.hint_message = f"Hint error: {str(e)[:40]}"
         finally:
             self.hint_thinking = False
 
@@ -325,7 +360,22 @@ class ChessGUI:
 
         return col * SQUARE_SIZE, row * SQUARE_SIZE
 
+    def get_display_board(self):
+        """Get the board position to display (current or historical)"""
+        if self.viewing_history and self.current_move_index is not None:
+            # Create a board with moves up to current_move_index
+            display_board = chess.Board()
+            all_moves = list(self.board.board.move_stack)
+            for i in range(self.current_move_index + 1):
+                display_board.push(all_moves[i])
+            return display_board
+        else:
+            return self.board.board
+
     def draw_board(self):
+        # Get the board position to display
+        display_board = self.get_display_board()
+
         # Draw squares
         for row in range(8):
             for col in range(8):
@@ -359,15 +409,15 @@ class ChessGUI:
                     color = SELECTED
 
                 # Highlight king in check
-                if self.board.is_check():
-                    king_square = self.board.board.king(self.board.board.turn)
+                if display_board.is_check():
+                    king_square = display_board.king(display_board.turn)
                     if square == king_square:
                         color = CHECK_COLOR
 
                 pygame.draw.rect(self.screen, color, (x, y, SQUARE_SIZE, SQUARE_SIZE))
 
                 # Draw piece
-                piece = self.board.board.piece_at(square)
+                piece = display_board.piece_at(square)
                 if piece:
                     piece_char = piece.symbol()
                     piece_unicode = PIECE_UNICODE[piece_char]
@@ -465,8 +515,20 @@ class ChessGUI:
             thinking = FONT_SMALL.render("● Thinking...", True, (100, 180, 255))
             self.screen.blit(thinking, (BOARD_SIZE + 20, info_y + 20))
         elif self.hint_thinking:
-            hint_status = FONT_SMALL.render("💡 Calculating hint...", True, (255, 200, 50))
+            hint_status = FONT_SMALL.render("Calculating hint...", True, (255, 200, 50))
             self.screen.blit(hint_status, (BOARD_SIZE + 20, info_y + 20))
+
+        # Display hint message if available
+        if self.hint_message and not self.hint_thinking:
+            hint_text = FONT_SMALL.render(self.hint_message, True, (100, 220, 100))
+            self.screen.blit(hint_text, (BOARD_SIZE + 20, info_y + 40))
+
+        # Show indicator when viewing history
+        if self.viewing_history:
+            history_indicator = FONT.render("VIEWING HISTORY", True, (255, 150, 50))
+            self.screen.blit(history_indicator, (BOARD_SIZE + 20, info_y + 65))
+            click_hint = FONT_SMALL.render("Click board to return", True, (200, 200, 200))
+            self.screen.blit(click_hint, (BOARD_SIZE + 20, info_y + 88))
 
         # Move history - more compact with proper chess notation
         history_y = 170
@@ -494,29 +556,29 @@ class ChessGUI:
 
         # When offset is 0, show the most recent moves
         # When offset increases, show older moves
-        if total_moves <= max_visible:
-            # Show all moves
-            visible_moves = move_pairs
-            start_idx = 0
-        else:
-            # Calculate which moves to show based on scroll offset
-            end_idx = total_moves - self.move_scroll_offset
-            start_idx = max(0, end_idx - max_visible)
-            visible_moves = move_pairs[start_idx:end_idx]
+        # Calculate which moves to show based on scroll offset (works for any number of moves)
+        end_idx = total_moves - self.move_scroll_offset
+        start_idx = max(0, end_idx - max_visible)
+        visible_moves = move_pairs[start_idx:end_idx]
 
         for i, move_text in enumerate(visible_moves):
-            text = FONT_SMALL.render(move_text, True, (190, 190, 190))
+            # Highlight the move being viewed
+            color = (190, 190, 190)
+            if self.viewing_history and self.current_move_index is not None:
+                # Calculate which move pair this is
+                move_pair_idx = start_idx + i
+                # Check if this move pair contains the current move
+                first_move_idx = move_pair_idx * 2
+                second_move_idx = first_move_idx + 1
+                if first_move_idx == self.current_move_index or second_move_idx == self.current_move_index:
+                    color = (255, 220, 100)  # Highlight color
+
+            text = FONT_SMALL.render(move_text, True, color)
             self.screen.blit(text, (BOARD_SIZE + 22, history_y + 35 + i * 18))
 
-        # Show scroll indicators if needed
-        if self.move_scroll_offset > 0:
-            # Can scroll down to see newer moves
-            down_arrow = FONT_SMALL.render("▼", True, (100, 180, 255))
-            self.screen.blit(down_arrow, (BOARD_SIZE + 200, history_y + 35 + 8 * 18))
-        if total_moves > max_visible and start_idx > 0:
-            # Can scroll up to see older moves
-            up_arrow = FONT_SMALL.render("▲", True, (100, 180, 255))
-            self.screen.blit(up_arrow, (BOARD_SIZE + 200, history_y + 35))
+        # Always draw scroll buttons (they work regardless of move count)
+        self.scroll_up_button.draw(self.screen)
+        self.scroll_down_button.draw(self.screen)
 
         # Action buttons - more compact
         button_y = 385
@@ -535,6 +597,12 @@ class ChessGUI:
             button.draw(self.screen)
 
     def handle_click(self, pos):
+        # If viewing history, clicking returns to current position
+        if self.viewing_history:
+            self.viewing_history = False
+            self.current_move_index = None
+            return
+
         if self.engine_thinking or self.board.is_game_over():
             return
 
@@ -567,6 +635,7 @@ class ChessGUI:
                 self.last_move = move
                 self.selected_square = None
                 self.legal_moves_for_selected = []
+                self.hint_message = None  # Clear hint after move
                 self.status_message = f"You played: {move}"
 
                 # Check game over
@@ -650,11 +719,15 @@ class ChessGUI:
                     running = False
 
                 # Handle button events
-                for button in self.buttons + self.depth_buttons:
-                    button.handle_event(event)
+                all_buttons = self.buttons + self.depth_buttons + [self.scroll_up_button, self.scroll_down_button]
+                button_handled = False
+                for button in all_buttons:
+                    if button.handle_event(event):
+                        button_handled = True
+                        break
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:  # Left click
+                    if event.button == 1 and not button_handled:  # Left click
                         self.handle_click(event.pos)
                     elif event.button == 4:  # Mouse wheel up
                         # Scroll up in move history
@@ -667,7 +740,8 @@ class ChessGUI:
                         self.move_scroll_offset = max(0, self.move_scroll_offset - 1)
 
                 if event.type == pygame.MOUSEMOTION:
-                    for button in self.buttons + self.depth_buttons:
+                    all_buttons = self.buttons + self.depth_buttons + [self.scroll_up_button, self.scroll_down_button]
+                    for button in all_buttons:
                         button.hovered = button.rect.collidepoint(event.pos)
 
             # Process engine result
