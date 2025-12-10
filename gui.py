@@ -220,17 +220,32 @@ class ChessGUI:
         self.viewing_history = False  # True when viewing past positions
         self.current_move_index = None  # Index of move being viewed (None = current position)
 
-        # Create piece font (larger for rendering) - try multiple fonts
-        piece_font_names = ['Segoe UI Symbol', 'Arial Unicode MS', 'DejaVu Sans', 'FreeSans']
+        # Create piece font (larger for rendering)
+        # Try to load a chess TTF font file first, then fall back to system fonts
         self.piece_font = None
-        for font_name in piece_font_names:
+
+        # Try loading chess font files
+        chess_font_files = ['ChessMerida.ttf', 'ChessAlpha.ttf', 'chess_merida_unicode.ttf']
+        for font_file in chess_font_files:
             try:
-                self.piece_font = pygame.font.SysFont(font_name, 70)
+                self.piece_font = pygame.font.Font(font_file, 65)
+                print(f"Loaded chess font: {font_file}")
                 break
             except:
                 continue
+
+        # Fall back to system fonts if no chess font found
         if self.piece_font is None:
-            self.piece_font = pygame.font.SysFont(None, 70)
+            piece_font_names = ['Segoe UI Symbol', 'Arial Unicode MS', 'DejaVu Sans', 'FreeSans']
+            for font_name in piece_font_names:
+                try:
+                    self.piece_font = pygame.font.SysFont(font_name, 65)
+                    break
+                except:
+                    continue
+
+        if self.piece_font is None:
+            self.piece_font = pygame.font.SysFont(None, 65)
 
         # Buttons
         self.buttons = [
@@ -422,20 +437,21 @@ class ChessGUI:
                     piece_char = piece.symbol()
                     piece_unicode = PIECE_UNICODE[piece_char]
 
-                    # Render piece with clean, sharp appearance
+                    # Render piece with antialiasing for smoother appearance
                     if piece.color == chess.WHITE:
-                        # White pieces: bright white with strong dark outline
-                        text_surface = self.piece_font.render(piece_unicode, True, (255, 255, 255))
-                        outline_surface = self.piece_font.render(piece_unicode, True, (30, 30, 30))
-                        text_rect = text_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
-                        # Draw thick outline for clarity
-                        for dx, dy in [(-2, -2), (-2, 2), (2, -2), (2, 2), (-2, 0), (2, 0), (0, -2), (0, 2),
-                                      (-1, -1), (-1, 1), (1, -1), (1, 1), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        # White pieces: bright white with dark outline for contrast
+                        # Draw outline first
+                        outline_surface = self.piece_font.render(piece_unicode, True, (50, 50, 50))
+                        text_rect = outline_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
+                        # Draw outline in multiple positions for thickness
+                        for dx, dy in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]:
                             self.screen.blit(outline_surface, (text_rect.x + dx, text_rect.y + dy))
+                        # Draw white piece on top
+                        text_surface = self.piece_font.render(piece_unicode, True, (255, 255, 255))
                         self.screen.blit(text_surface, text_rect)
                     else:
-                        # Black pieces: solid black, no blur
-                        text_surface = self.piece_font.render(piece_unicode, True, (0, 0, 0))
+                        # Black pieces: solid black with antialiasing
+                        text_surface = self.piece_font.render(piece_unicode, True, (30, 30, 30))
                         text_rect = text_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
                         self.screen.blit(text_surface, text_rect)
 
