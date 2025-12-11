@@ -115,7 +115,7 @@ python gui.py
 ## Project Structure
 
 ```
-clever-agnesi/
+chessWithClaudeGit/
 ├── README.md              # This file
 ├── requirements.txt       # Python dependencies
 ├── .gitignore            # Git ignore rules
@@ -200,9 +200,15 @@ Note: Depth 7+ may have noticeable calculation time on slower machines.
 
 ## Development
 
+### Development Workflow
+**IMPORTANT**: For future development sessions:
+- Always work directly on the `main` branch unless explicitly requested otherwise
+- Only create feature branches when specifically asked
+- This ensures cleaner git history and simpler collaboration
+
 ### Git Information
-- **Current Branch**: `clever-agnesi`
-- **Recent Commits**: Initial setup and configuration
+- **Main Branch**: `main`
+- **Recent Commits**: Chess engine improvements and fixes
 
 ### Contributing
 This is an active development project. Areas for potential enhancement:
