@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd /c:*)",
+      "Bash(python:*)"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "git": {
+    "autoBranchCreation": false,
+    "defaultBranch": "main"
+  }
+}
