@@ -109,8 +109,6 @@ games/
 │   │   └── ...
 │   └── match_2024-12-12_002/
 │       └── ...
-├── training_data/
-│   └── all_games.pgn  (aggregated)
 └── match_results/
     └── results_summary.json
 ```
@@ -143,7 +141,6 @@ Each game should include:
 
 ### Features
 - Save each game immediately after completion
-- Aggregate all games into training dataset
 - Include engine metadata (version, depth, time control)
 - Track evaluation scores if desired
 - Export summary statistics to JSON
@@ -213,7 +210,6 @@ Each game should include:
 ╚══════════════════════════════════════════════════════════╝
 
 Games saved to: games/v3_vs_v4/match_2024-12-12_001/
-Training data:  games/training_data/all_games.pgn (100 games)
 ```
 
 ### Export Formats
@@ -224,9 +220,18 @@ Training data:  games/training_data/all_games.pgn (100 games)
 
 ---
 
-## Phase 5: Command Line Interface
+## Phase 5: Tournament Interfaces
 
-### Usage Examples
+### 5.1 Command Line Interface (`tournament.py`)
+
+#### Features
+- Headless tournament execution
+- Progress bar with live statistics
+- Configurable verbosity levels
+- Scriptable for automation
+- Ideal for batch testing and CI/CD
+
+#### Usage Examples
 ```bash
 # Run 100 games between v3 and v4
 python tournament.py --engine1 engine_v3 --engine2 engine_v4 --games 100
@@ -245,9 +250,123 @@ python tournament.py \
 # Quick test match (10 games)
 python tournament.py --quick --engine1 v3 --engine2 v4
 
+# Quiet mode (minimal output)
+python tournament.py --engine1 v3 --engine2 v4 --games 50 --quiet
+
 # View previous match results
 python results_viewer.py games/v3_vs_v4/match_2024-12-12_001/
 ```
+
+#### CLI Output Features
+- Real-time progress bar (using tqdm)
+- Live score updates (W-D-L)
+- Time elapsed and ETA
+- Final statistics table
+- Saved game locations
+
+---
+
+### 5.2 Graphical Tournament Interface (`tournament_gui.py`)
+
+#### File to Create
+- `tournament_gui.py` - Pygame-based tournament viewer
+
+#### Features
+
+**Main Display Area:**
+- Live chessboard showing current game position
+- Move-by-move animation (adjustable speed)
+- Evaluation bar showing position advantage
+- Last move highlighting
+
+**Statistics Panel:**
+- Match configuration (engines, depth, time control)
+- Current game number (e.g., "Game 47/100")
+- Live score: Engine 1 vs Engine 2 (W-D-L format)
+- Current game status (opening/middlegame/endgame)
+- Time per move for current game
+- Nodes searched per move
+
+**Control Panel:**
+- Start/Pause tournament
+- Speed control slider (1x to 100x speed)
+- Skip to next game
+- Stop tournament
+- Export results
+
+**Game History:**
+- Scrollable list of completed games
+- Click to replay any finished game
+- Color-coded results (Green=Win, Gray=Draw, Red=Loss)
+
+**Progress Indicators:**
+- Overall progress bar
+- Estimated time remaining
+- Games per hour rate
+
+**Results Summary (After Completion):**
+- Detailed statistics table
+- Win/Draw/Loss breakdown by color
+- Average game length
+- Elo estimate
+- Export to JSON/CSV buttons
+
+#### Layout Design
+```
+┌─────────────────────────────────────────────────────────┐
+│  Tournament: v3.0 vs v4.0                    [X]        │
+├──────────────────────┬──────────────────────────────────┤
+│                      │  Match Configuration             │
+│                      │  ━━━━━━━━━━━━━━━━━━━━━━          │
+│                      │  Engine 1: v3.0 (depth=5)        │
+│    Chessboard        │  Engine 2: v4.0 (depth=5)        │
+│    (640x640)         │  Time: 1s/move                   │
+│                      │                                  │
+│                      │  Current Status                  │
+│                      │  ━━━━━━━━━━━━━━━━━━━━━━          │
+│                      │  Game: 47/100                    │
+│                      │  Score: 24-8-15 (v3.0)           │
+│  [Eval Bar]          │         15-8-24 (v4.0)           │
+│                      │                                  │
+│                      │  Progress: ████████░░ 47%        │
+│                      │  ETA: 1h 23m                     │
+├──────────────────────┤                                  │
+│ Last Move: Nf3       │  Controls                        │
+│ Eval: +0.45          │  ━━━━━━━━━━━━━━━━━━━━━━          │
+│                      │  [Pause] [Skip] [Stop]           │
+│                      │  Speed: [1x][10x][100x]          │
+└──────────────────────┴──────────────────────────────────┘
+```
+
+#### GUI Usage
+```bash
+# Launch tournament GUI
+python tournament_gui.py
+
+# Pre-configured match via command line
+python tournament_gui.py --engine1 v3 --engine2 v4 --games 100 --depth1 5 --depth2 5
+```
+
+#### Interactive Setup (when launched without args):
+1. Select Engine 1 (dropdown: v3, v4, v5, etc.)
+2. Select Engine 2 (dropdown)
+3. Set number of games (slider or input: 10-1000)
+4. Set depth for each engine (1-10)
+5. Set time limit per move (optional)
+6. Choose opening book (optional)
+7. Click "Start Tournament"
+
+#### Speed Controls:
+- **1x**: Normal speed - see every move (good for analysis)
+- **10x**: Fast - shows position every 10 moves
+- **50x**: Very fast - shows only game results
+- **100x**: Maximum - headless mode with live stats only
+
+#### Replay Mode:
+- After tournament completes, click any game in history
+- Board updates to show that game
+- Step through moves with arrow keys or slider
+- View engine evaluations at each position
 
 ---
 
@@ -312,25 +431,28 @@ python results_viewer.py games/v3_vs_v4/match_2024-12-12_001/
 ## Implementation Priority
 
 ### High Priority (Must Have)
-1. ✓ Copy engine to versioned files
-2. ✓ Basic tournament runner (2 engines, N games)
-3. ✓ PGN game recording
-4. ✓ Results statistics and display
-5. ✓ Command-line interface
+1. Copy engine to versioned files
+2. Basic tournament runner (2 engines, N games)
+3. PGN game recording
+4. Results statistics and display
+5. Command-line interface
+6. Graphical tournament interface
 
 ### Medium Priority (Should Have)
-6. Opening position support
-7. Progress bar and ETA
-8. JSON/CSV export
-9. Adjudication rules
-10. Error handling and recovery
+7. Opening position support
+8. Progress bar and ETA
+9. JSON/CSV export
+10. Adjudication rules
+11. Error handling and recovery
+12. Tournament GUI speed controls
+13. Game replay functionality
 
 ### Low Priority (Nice to Have)
-11. Parallel game execution
-12. Real-time evaluation graph
-13. Web dashboard
-14. ML dataset preparation tools
-15. Swiss tournament format
+14. Parallel game execution
+15. Real-time evaluation graph in GUI
+16. Web dashboard
+17. ML dataset preparation tools
+18. Swiss tournament format
 
 ---
 
@@ -345,14 +467,14 @@ chessWithClaudeGit/
 ├── engine_v3.py                 (NEW: baseline copy)
 ├── engine_v4.py                 (NEW: improved version)
 ├── main.py                      (unchanged)
-├── gui.py                       (unchanged)
-├── tournament.py                (NEW: main tournament runner)
+├── gui.py                       (unchanged - for playing games)
+├── tournament.py                (NEW: CLI tournament runner)
+├── tournament_gui.py            (NEW: GUI tournament viewer)
 ├── game_recorder.py             (NEW: PGN recording)
 ├── results_viewer.py            (NEW: results analysis)
 ├── openings.fen                 (NEW: optional opening book)
 ├── games/                       (NEW: directory for saved games)
 │   ├── v3_vs_v4/
-│   ├── training_data/
 │   └── match_results/
 └── IMPROVEMENT_PLAN.md          (this file)
 ```
@@ -414,13 +536,18 @@ A new engine version is considered "better" if:
 ## Next Steps
 
 Once approved, implementation order:
-1. Create engine_v3.py and engine_v4.py
-2. Build basic tournament.py (core functionality)
+1. Create engine_v3.py and engine_v4.py (versioned engines)
+2. Build basic tournament.py (CLI core functionality)
 3. Implement game_recorder.py (PGN saving)
 4. Add results display to tournament.py
-5. Test with small match (10 games)
-6. Add progress indicators and statistics
-7. Run full match (100+ games)
-8. Iterate on engine improvements
+5. Test with small match (10 games via CLI)
+6. Build tournament_gui.py (graphical interface)
+7. Add progress indicators and statistics to both interfaces
+8. Test GUI with medium match (50 games)
+9. Run full match (100+ games)
+10. Iterate on engine improvements
 
-**Estimated Implementation Time**: 2-4 hours for core features
+**Estimated Implementation Time**:
+- CLI tournament system: 2-3 hours
+- GUI tournament system: 3-4 hours
+- Total core features: 5-7 hours
