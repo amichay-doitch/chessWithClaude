@@ -1,15 +1,16 @@
 """
-Tournament GUI - Visual interface for watching engine vs engine matches
+Tournament GUI with Interactive Configuration Screen
 """
 
 import pygame
 import chess
 import sys
-import argparse
+import os
+import glob
+import importlib
 import threading
 import time
-import importlib
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 from game_recorder import GameRecorder
 
 
@@ -24,6 +25,7 @@ PANEL_BG = (250, 250, 252)
 BUTTON_COLOR = (70, 130, 180)
 BUTTON_HOVER = (100, 160, 210)
 BUTTON_DISABLED = (180, 180, 180)
+BUTTON_SELECTED = (50, 180, 100)
 TEXT_COLOR = (40, 40, 50)
 GREEN = (76, 175, 80)
 RED = (244, 67, 54)
@@ -46,12 +48,22 @@ class Button:
         self.color = color
         self.hover_color = tuple(min(c + 30, 255) for c in color)
         self.disabled_color = BUTTON_DISABLED
+        self.selected_color = BUTTON_SELECTED
         self.enabled = True
         self.hovered = False
+        self.selected = False
 
     def draw(self, screen, font):
         """Draw the button."""
-        color = self.disabled_color if not self.enabled else (self.hover_color if self.hovered else self.color)
+        if self.selected:
+            color = self.selected_color
+        elif not self.enabled:
+            color = self.disabled_color
+        elif self.hovered:
+            color = self.hover_color
+        else:
+            color = self.color
+
         pygame.draw.rect(screen, color, self.rect, border_radius=5)
         pygame.draw.rect(screen, (200, 200, 200), self.rect, 2, border_radius=5)
 
@@ -74,95 +86,123 @@ class Button:
 
 
 class TournamentGUI:
-    """GUI for watching chess engine tournaments."""
+    """GUI for watching chess engine tournaments with configuration screen."""
 
-    def __init__(self, engine1_module: str, engine2_module: str,
-                 depth1: int = 5, depth2: int = 5,
-                 time_limit: Optional[float] = None,
-                 num_games: int = 10):
+    def __init__(self):
         """Initialize tournament GUI."""
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("Chess Tournament Viewer")
+        pygame.display.set_caption("Chess Tournament - Configuration")
         self.clock = pygame.time.Clock()
 
         # Fonts
-        self.title_font = pygame.font.Font(None, 36)
+        self.title_font = pygame.font.Font(None, 48)
         self.font = pygame.font.Font(None, 24)
         self.small_font = pygame.font.Font(None, 20)
         self.tiny_font = pygame.font.Font(None, 16)
 
-        # Tournament settings
-        self.engine1_module = engine1_module
-        self.engine2_module = engine2_module
-        self.depth1 = depth1
-        self.depth2 = depth2
-        self.time_limit = time_limit
-        self.num_games = num_games
+        # State
+        self.mode = "config"  # "config" or "tournament"
 
-        # Load engines
-        print(f"Loading engines: {engine1_module} vs {engine2_module}...")
-        mod1 = importlib.import_module(engine1_module)
-        mod2 = importlib.import_module(engine2_module)
-        self.engine1 = mod1.ChessEngine(max_depth=depth1, time_limit=time_limit)
-        self.engine2 = mod2.ChessEngine(max_depth=depth2, time_limit=time_limit)
+        # Find available engines
+        self.available_engines = self.find_engines()
 
-        # Game state
-        self.board = chess.Board()
+        # Configuration settings (defaults)
+        self.config = {
+            "engine1": "engine_v3" if "engine_v3" in self.available_engines else self.available_engines[0],
+            "engine2": "engine_v4" if "engine_v4" in self.available_engines else self.available_engines[0],
+            "depth1": 5,
+            "depth2": 5,
+            "num_games": 10,
+            "time_limit": None
+        }
+
+        # Tournament state (initialized when tournament starts)
+        self.engine1 = None
+        self.engine2 = None
+        self.board = None
         self.current_game = 0
         self.running = False
         self.paused = False
         self.speed = 1
-
-        # Statistics
-        self.stats = {
-            "engine1": {"wins": 0, "draws": 0, "losses": 0},
-            "engine2": {"wins": 0, "draws": 0, "losses": 0},
-            "games": [],
-            "start_time": None
-        }
-
-        # Recorder
-        self.recorder = GameRecorder("games")
-
-        # Threading
+        self.stats = None
+        self.recorder = None
         self.game_thread = None
         self.current_move_info = None
 
-        # Create buttons
-        self.create_buttons()
+        # Create config UI
+        self.create_config_ui()
 
-        # Load piece images
+        # Load piece font
         self.load_pieces()
 
-    def create_buttons(self):
-        """Create GUI buttons."""
-        panel_x = BOARD_SIZE + 20
-        button_y = SCREEN_HEIGHT - 200
-        button_width = 130
-        button_height = 45
+    def find_engines(self) -> List[str]:
+        """Find available engine modules."""
+        engines = []
+        for file in glob.glob("engine*.py"):
+            module_name = file[:-3]  # Remove .py
+            engines.append(module_name)
+        engines.sort()
+        return engines if engines else ["engine"]
+
+    def create_config_ui(self):
+        """Create configuration UI elements."""
+        panel_x = BOARD_SIZE + 30
+        y_start = 100
+        button_width = 120
+        button_height = 40
         spacing = 10
 
-        self.start_button = Button(panel_x, button_y, button_width, button_height, "Start", GREEN)
-        self.pause_button = Button(panel_x + button_width + spacing, button_y, button_width, button_height, "Pause", ORANGE)
-        self.stop_button = Button(panel_x + 2 * (button_width + spacing), button_y, button_width, button_height, "Stop", RED)
+        # Engine 1 buttons
+        self.engine1_buttons = []
+        y = y_start
+        for i, engine in enumerate(self.available_engines):
+            btn = Button(panel_x, y + i * (button_height + spacing), 180, button_height,
+                        engine, BUTTON_COLOR)
+            btn.selected = (engine == self.config["engine1"])
+            self.engine1_buttons.append((btn, engine))
 
-        # Speed buttons
-        speed_y = button_y + button_height + spacing
-        speed_width = 60
-        self.speed_1x = Button(panel_x, speed_y, speed_width, 35, "1x", BUTTON_COLOR)
-        self.speed_10x = Button(panel_x + speed_width + 5, speed_y, speed_width, 35, "10x", BUTTON_COLOR)
-        self.speed_50x = Button(panel_x + 2 * (speed_width + 5), speed_y, speed_width, 35, "50x", BUTTON_COLOR)
-        self.speed_100x = Button(panel_x + 3 * (speed_width + 5), speed_y, speed_width, 35, "100x", BUTTON_COLOR)
+        # Engine 2 buttons
+        self.engine2_buttons = []
+        y = y_start
+        for i, engine in enumerate(self.available_engines):
+            btn = Button(panel_x + 220, y + i * (button_height + spacing), 180, button_height,
+                        engine, BUTTON_COLOR)
+            btn.selected = (engine == self.config["engine2"])
+            self.engine2_buttons.append((btn, engine))
 
-        self.buttons = [
-            self.start_button, self.pause_button, self.stop_button,
-            self.speed_1x, self.speed_10x, self.speed_50x, self.speed_100x
-        ]
+        # Depth buttons
+        y = y_start + len(self.available_engines) * (button_height + spacing) + 40
+        self.depth1_buttons = []
+        for i, depth in enumerate([3, 4, 5, 6, 7]):
+            btn = Button(panel_x + i * 45, y, 40, 35, str(depth), BUTTON_COLOR)
+            btn.selected = (depth == self.config["depth1"])
+            self.depth1_buttons.append((btn, depth))
+
+        self.depth2_buttons = []
+        y += 60
+        for i, depth in enumerate([3, 4, 5, 6, 7]):
+            btn = Button(panel_x + i * 45, y, 40, 35, str(depth), BUTTON_COLOR)
+            btn.selected = (depth == self.config["depth2"])
+            self.depth2_buttons.append((btn, depth))
+
+        # Games buttons
+        y += 80
+        self.games_buttons = []
+        for i, games in enumerate([10, 20, 50, 100]):
+            btn = Button(panel_x + i * 60, y, 55, 35, str(games), BUTTON_COLOR)
+            btn.selected = (games == self.config["num_games"])
+            self.games_buttons.append((btn, games))
+
+        # Start button
+        self.config_start_button = Button(panel_x + 50, SCREEN_HEIGHT - 100, 300, 60,
+                                         "START TOURNAMENT", GREEN)
+
+        # Tournament control buttons (created when tournament starts)
+        self.tournament_buttons = []
 
     def load_pieces(self):
         """Load chess piece images."""
-        # Try to load a font that supports chess unicode symbols
         font_size = int(SQUARE_SIZE * 0.8)
         self.piece_font = None
 
@@ -176,17 +216,209 @@ class TournamentGUI:
             except:
                 continue
 
-        # Fallback to default if no unicode font found
         if self.piece_font is None:
             print("Warning: No unicode font found, using default")
             self.piece_font = pygame.font.Font(None, font_size)
 
-        # Store piece unicode chars for rendering with outlines
         self.piece_chars = {
             'P': '\u2659', 'N': '\u2658', 'B': '\u2657',
             'R': '\u2656', 'Q': '\u2655', 'K': '\u2654',
             'p': '\u265F', 'n': '\u265E', 'b': '\u265D',
             'r': '\u265C', 'q': '\u265B', 'k': '\u265A'
+        }
+
+    def draw_config_screen(self):
+        """Draw configuration screen."""
+        self.screen.fill(BG_COLOR)
+
+        # Title
+        title = self.title_font.render("Tournament Setup", True, TEXT_COLOR)
+        self.screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 30))
+
+        panel_x = BOARD_SIZE + 30
+        y = 100
+
+        # Engine 1 label
+        label1 = self.font.render("Engine 1:", True, TEXT_COLOR)
+        self.screen.blit(label1, (panel_x, y - 30))
+
+        # Engine 2 label
+        label2 = self.font.render("Engine 2:", True, TEXT_COLOR)
+        self.screen.blit(label2, (panel_x + 220, y - 30))
+
+        # Draw engine buttons
+        for btn, engine in self.engine1_buttons:
+            btn.draw(self.screen, self.tiny_font)
+
+        for btn, engine in self.engine2_buttons:
+            btn.draw(self.screen, self.tiny_font)
+
+        # Depth labels and buttons
+        y = y + len(self.available_engines) * 50 + 40
+        depth1_label = self.font.render(f"Engine 1 Depth:", True, TEXT_COLOR)
+        self.screen.blit(depth1_label, (panel_x, y - 30))
+
+        for btn, depth in self.depth1_buttons:
+            btn.draw(self.screen, self.small_font)
+
+        y += 60
+        depth2_label = self.font.render(f"Engine 2 Depth:", True, TEXT_COLOR)
+        self.screen.blit(depth2_label, (panel_x, y - 30))
+
+        for btn, depth in self.depth2_buttons:
+            btn.draw(self.screen, self.small_font)
+
+        # Games label and buttons
+        y += 80
+        games_label = self.font.render("Number of Games:", True, TEXT_COLOR)
+        self.screen.blit(games_label, (panel_x, y - 30))
+
+        for btn, games in self.games_buttons:
+            btn.draw(self.screen, self.small_font)
+
+        # Current config display
+        y += 80
+        config_text = [
+            f"Ready to start:",
+            f"{self.config['engine1']} (depth {self.config['depth1']}) vs",
+            f"{self.config['engine2']} (depth {self.config['depth2']})",
+            f"{self.config['num_games']} games"
+        ]
+        for i, line in enumerate(config_text):
+            text = self.small_font.render(line, True, TEXT_COLOR)
+            self.screen.blit(text, (panel_x, y + i * 22))
+
+        # Start button
+        self.config_start_button.draw(self.screen, self.font)
+
+        # Instructions on left side
+        instructions = [
+            "Select engines and settings,",
+            "then click START TOURNAMENT",
+            "",
+            "Controls during tournament:",
+            "SPACE - Start/Pause",
+            "S - Stop",
+            "Q - Quit",
+            "1/2/3/4 - Speed control"
+        ]
+        for i, line in enumerate(instructions):
+            text = self.small_font.render(line, True, TEXT_COLOR)
+            self.screen.blit(text, (30, 150 + i * 30))
+
+    def handle_config_events(self, event):
+        """Handle events in config mode."""
+        # Engine 1 selection
+        for btn, engine in self.engine1_buttons:
+            if btn.handle_event(event):
+                self.config["engine1"] = engine
+                # Update selected states
+                for b, e in self.engine1_buttons:
+                    b.selected = (e == engine)
+
+        # Engine 2 selection
+        for btn, engine in self.engine2_buttons:
+            if btn.handle_event(event):
+                self.config["engine2"] = engine
+                # Update selected states
+                for b, e in self.engine2_buttons:
+                    b.selected = (e == engine)
+
+        # Depth 1 selection
+        for btn, depth in self.depth1_buttons:
+            if btn.handle_event(event):
+                self.config["depth1"] = depth
+                for b, d in self.depth1_buttons:
+                    b.selected = (d == depth)
+
+        # Depth 2 selection
+        for btn, depth in self.depth2_buttons:
+            if btn.handle_event(event):
+                self.config["depth2"] = depth
+                for b, d in self.depth2_buttons:
+                    b.selected = (d == depth)
+
+        # Games selection
+        for btn, games in self.games_buttons:
+            if btn.handle_event(event):
+                self.config["num_games"] = games
+                for b, g in self.games_buttons:
+                    b.selected = (g == games)
+
+        # Start button
+        if self.config_start_button.handle_event(event):
+            self.start_tournament_setup()
+
+    def start_tournament_setup(self):
+        """Initialize tournament with configured settings."""
+        print(f"\nLoading engines: {self.config['engine1']} vs {self.config['engine2']}...")
+
+        try:
+            # Load engines
+            mod1 = importlib.import_module(self.config['engine1'])
+            mod2 = importlib.import_module(self.config['engine2'])
+            self.engine1 = mod1.ChessEngine(max_depth=self.config['depth1'],
+                                           time_limit=self.config['time_limit'])
+            self.engine2 = mod2.ChessEngine(max_depth=self.config['depth2'],
+                                           time_limit=self.config['time_limit'])
+
+            # Initialize tournament state
+            self.board = chess.Board()
+            self.current_game = 0
+            self.running = False
+            self.paused = False
+            self.speed = 1
+
+            self.stats = {
+                "engine1": {"wins": 0, "draws": 0, "losses": 0},
+                "engine2": {"wins": 0, "draws": 0, "losses": 0},
+                "games": [],
+                "start_time": None
+            }
+
+            self.recorder = GameRecorder("games")
+
+            # Create tournament buttons
+            self.create_tournament_buttons()
+
+            # Switch to tournament mode
+            self.mode = "tournament"
+            pygame.display.set_caption("Chess Tournament Viewer")
+            print("Tournament ready! Press SPACE or click Start to begin.")
+
+        except Exception as e:
+            print(f"Error loading engines: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def create_tournament_buttons(self):
+        """Create tournament control buttons."""
+        panel_x = BOARD_SIZE + 20
+        button_y = SCREEN_HEIGHT - 200
+        button_width = 130
+        button_height = 45
+        spacing = 10
+
+        start_btn = Button(panel_x, button_y, button_width, button_height, "Start", GREEN)
+        pause_btn = Button(panel_x + button_width + spacing, button_y, button_width, button_height, "Pause", ORANGE)
+        stop_btn = Button(panel_x + 2 * (button_width + spacing), button_y, button_width, button_height, "Stop", RED)
+
+        # Speed buttons
+        speed_y = button_y + button_height + spacing
+        speed_width = 60
+        speed_1x = Button(panel_x, speed_y, speed_width, 35, "1x", BUTTON_COLOR)
+        speed_10x = Button(panel_x + speed_width + 5, speed_y, speed_width, 35, "10x", BUTTON_COLOR)
+        speed_50x = Button(panel_x + 2 * (speed_width + 5), speed_y, speed_width, 35, "50x", BUTTON_COLOR)
+        speed_100x = Button(panel_x + 3 * (speed_width + 5), speed_y, speed_width, 35, "100x", BUTTON_COLOR)
+
+        self.tournament_buttons = {
+            "start": start_btn,
+            "pause": pause_btn,
+            "stop": stop_btn,
+            "1x": speed_1x,
+            "10x": speed_10x,
+            "50x": speed_50x,
+            "100x": speed_100x
         }
 
     def draw_board(self):
@@ -214,13 +446,10 @@ class TournamentGUI:
                         center_x = x + SQUARE_SIZE // 2
                         center_y = y + SQUARE_SIZE // 2
 
-                        # Draw piece with thick colored outline for maximum visibility
                         if piece.color == chess.WHITE:
-                            # White pieces: thick black outline + white fill
                             outline_color = (0, 0, 0)
                             fill_color = (255, 255, 255)
                         else:
-                            # Black pieces: thick white outline + black fill
                             outline_color = (255, 255, 255)
                             fill_color = (0, 0, 0)
 
@@ -236,8 +465,8 @@ class TournamentGUI:
                         fill_surface = self.piece_font.render(piece_unicode, True, fill_color)
                         self.screen.blit(fill_surface, text_rect)
 
-    def draw_panel(self):
-        """Draw the statistics and control panel."""
+    def draw_tournament_panel(self):
+        """Draw tournament statistics and control panel."""
         panel_x = BOARD_SIZE
 
         # Panel background
@@ -259,11 +488,11 @@ class TournamentGUI:
 
         info_y = y + 15
         info_lines = [
-            f"{self.engine1_module} vs {self.engine2_module}",
-            f"Depth: {self.depth1} vs {self.depth2}",
-            f"Time: {self.time_limit}s" if self.time_limit else "Depth-based",
+            f"{self.config['engine1']} vs {self.config['engine2']}",
+            f"Depth: {self.config['depth1']} vs {self.config['depth2']}",
+            f"Time: {self.config['time_limit']}s" if self.config['time_limit'] else "Depth-based",
             f"",
-            f"Game: {self.current_game}/{self.num_games}",
+            f"Game: {self.current_game}/{self.config['num_games']}",
         ]
 
         for line in info_lines:
@@ -287,7 +516,7 @@ class TournamentGUI:
         pygame.draw.rect(self.screen, WHITE, score_box1, border_radius=8)
         pygame.draw.rect(self.screen, GREEN if e1_score > e2_score else (220, 220, 220), score_box1, 2, border_radius=8)
 
-        name1 = self.tiny_font.render(self.engine1_module, True, TEXT_COLOR)
+        name1 = self.tiny_font.render(self.config['engine1'], True, TEXT_COLOR)
         score1 = self.title_font.render(f"{e1_score}", True, TEXT_COLOR)
         wdl1 = self.tiny_font.render(f"W:{self.stats['engine1']['wins']} D:{self.stats['engine1']['draws']} L:{self.stats['engine1']['losses']}", True, TEXT_COLOR)
 
@@ -300,7 +529,7 @@ class TournamentGUI:
         pygame.draw.rect(self.screen, WHITE, score_box2, border_radius=8)
         pygame.draw.rect(self.screen, GREEN if e2_score > e1_score else (220, 220, 220), score_box2, 2, border_radius=8)
 
-        name2 = self.tiny_font.render(self.engine2_module, True, TEXT_COLOR)
+        name2 = self.tiny_font.render(self.config['engine2'], True, TEXT_COLOR)
         score2 = self.title_font.render(f"{e2_score}", True, TEXT_COLOR)
         wdl2 = self.tiny_font.render(f"W:{self.stats['engine2']['wins']} D:{self.stats['engine2']['draws']} L:{self.stats['engine2']['losses']}", True, TEXT_COLOR)
 
@@ -342,7 +571,7 @@ class TournamentGUI:
         self.screen.blit(speed_text, (panel_x + 250, y + 5))
 
         # Draw buttons
-        for button in self.buttons:
+        for button in self.tournament_buttons.values():
             button.draw(self.screen, self.small_font)
 
     def play_game_threaded(self, game_number: int, engine1_is_white: bool):
@@ -351,8 +580,8 @@ class TournamentGUI:
 
         white_engine = self.engine1 if engine1_is_white else self.engine2
         black_engine = self.engine2 if engine1_is_white else self.engine1
-        white_name = self.engine1_module if engine1_is_white else self.engine2_module
-        black_name = self.engine2_module if engine1_is_white else self.engine1_module
+        white_name = self.config['engine1'] if engine1_is_white else self.config['engine2']
+        black_name = self.config['engine2'] if engine1_is_white else self.config['engine1']
 
         white_times = []
         white_nodes = []
@@ -451,14 +680,14 @@ class TournamentGUI:
     def update_stats(self, result: str, white_name: str):
         """Update tournament statistics."""
         if result == "1-0":
-            if white_name == self.engine1_module:
+            if white_name == self.config['engine1']:
                 self.stats["engine1"]["wins"] += 1
                 self.stats["engine2"]["losses"] += 1
             else:
                 self.stats["engine2"]["wins"] += 1
                 self.stats["engine1"]["losses"] += 1
         elif result == "0-1":
-            if white_name == self.engine1_module:
+            if white_name == self.config['engine1']:
                 self.stats["engine2"]["wins"] += 1
                 self.stats["engine1"]["losses"] += 1
             else:
@@ -477,12 +706,13 @@ class TournamentGUI:
         self.stats["start_time"] = time.time()
 
         self.recorder.start_match(
-            self.engine1_module, self.engine2_module,
-            self.depth1, self.depth2, self.time_limit, self.num_games
+            self.config['engine1'], self.config['engine2'],
+            self.config['depth1'], self.config['depth2'],
+            self.config['time_limit'], self.config['num_games']
         )
 
         def run_tournament():
-            for game_num in range(1, self.num_games + 1):
+            for game_num in range(1, self.config['num_games'] + 1):
                 if not self.running:
                     break
 
@@ -498,44 +728,52 @@ class TournamentGUI:
         self.game_thread = threading.Thread(target=run_tournament, daemon=True)
         self.game_thread.start()
 
+    def handle_tournament_events(self, event):
+        """Handle events in tournament mode."""
+        if self.tournament_buttons["start"].handle_event(event):
+            if not self.running:
+                self.start_tournament()
+
+        if self.tournament_buttons["pause"].handle_event(event):
+            if self.running:
+                self.paused = not self.paused
+
+        if self.tournament_buttons["stop"].handle_event(event):
+            self.running = False
+
+        if self.tournament_buttons["1x"].handle_event(event):
+            self.speed = 1
+        if self.tournament_buttons["10x"].handle_event(event):
+            self.speed = 10
+        if self.tournament_buttons["50x"].handle_event(event):
+            self.speed = 50
+        if self.tournament_buttons["100x"].handle_event(event):
+            self.speed = 100
+
+        # Keyboard shortcuts
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE:
+                if not self.running:
+                    self.start_tournament()
+                else:
+                    self.paused = not self.paused
+            elif event.key == pygame.K_s:
+                self.running = False
+
     def handle_events(self):
         """Handle pygame events."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
 
-            # Handle button events
-            if self.start_button.handle_event(event):
-                if not self.running:
-                    self.start_tournament()
-
-            if self.pause_button.handle_event(event):
-                if self.running:
-                    self.paused = not self.paused
-
-            if self.stop_button.handle_event(event):
-                self.running = False
-
-            if self.speed_1x.handle_event(event):
-                self.speed = 1
-            if self.speed_10x.handle_event(event):
-                self.speed = 10
-            if self.speed_50x.handle_event(event):
-                self.speed = 50
-            if self.speed_100x.handle_event(event):
-                self.speed = 100
-
-            # Keyboard shortcuts
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_q:
                     return False
-                elif event.key == pygame.K_SPACE:
-                    if not self.running:
-                        self.start_tournament()
-                    else:
-                        self.paused = not self.paused
-                elif event.key == pygame.K_s:
-                    self.running = False
+
+            if self.mode == "config":
+                self.handle_config_events(event)
+            else:  # tournament mode
+                self.handle_tournament_events(event)
 
         return True
 
@@ -546,13 +784,16 @@ class TournamentGUI:
         while running:
             running = self.handle_events()
 
-            # Update button states
-            self.pause_button.enabled = self.running
-            self.stop_button.enabled = self.running
+            if self.mode == "config":
+                self.draw_config_screen()
+            else:  # tournament mode
+                # Update button states
+                self.tournament_buttons["pause"].enabled = self.running
+                self.tournament_buttons["stop"].enabled = self.running
 
-            self.screen.fill(BG_COLOR)
-            self.draw_board()
-            self.draw_panel()
+                self.screen.fill(BG_COLOR)
+                self.draw_board()
+                self.draw_tournament_panel()
 
             pygame.display.flip()
             self.clock.tick(30)
@@ -563,31 +804,12 @@ class TournamentGUI:
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Tournament GUI")
+    print("\nTournament GUI with Interactive Configuration")
+    print("=" * 50)
+    print("\nStarting configuration screen...")
+    print("Select your engines and settings, then click START TOURNAMENT\n")
 
-    parser.add_argument("--engine1", default="engine_v3", help="First engine module")
-    parser.add_argument("--engine2", default="engine_v4", help="Second engine module")
-    parser.add_argument("--games", type=int, default=10, help="Number of games")
-    parser.add_argument("--depth1", type=int, default=5, help="Depth for engine 1")
-    parser.add_argument("--depth2", type=int, default=5, help="Depth for engine 2")
-    parser.add_argument("--time", type=float, default=None, help="Time limit per move")
-
-    args = parser.parse_args()
-
-    gui = TournamentGUI(
-        args.engine1, args.engine2,
-        depth1=args.depth1, depth2=args.depth2,
-        time_limit=args.time,
-        num_games=args.games
-    )
-
-    print("\nTournament GUI Controls:")
-    print("  Click 'Start' or press SPACE - Start tournament")
-    print("  Click 'Pause' or press SPACE - Pause/Resume")
-    print("  Click 'Stop' or press S - Stop tournament")
-    print("  Speed buttons - Change playback speed")
-    print("  Q - Quit\n")
-
+    gui = TournamentGUI()
     gui.run()
 
 

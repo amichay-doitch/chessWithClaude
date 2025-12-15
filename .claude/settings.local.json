@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(ls:*)",
+      "Bash(python tournament_gui.py:*)",
+      "Bash(python tournament_gui_config.py:*)"
     ],
     "deny": [],
     "ask": []
