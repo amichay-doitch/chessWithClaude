@@ -1,7 +1,10 @@
 """
-Chess Engine v3.0
+Chess Engine v4.0
 A strong chess engine with comprehensive evaluation and advanced search.
 Designed for competitive play.
+
+Improvements over v3.0:
+- Tuned piece values for better material evaluation
 """
 
 import chess
@@ -55,14 +58,14 @@ class ChessEngine:
     - Threats and hanging pieces
     """
 
-    # Piece values in centipawns
+    # Piece values in centipawns (v4.0: tuned for better evaluation)
     PIECE_VALUES = {
         chess.PAWN: 100,
-        chess.KNIGHT: 320,
-        chess.BISHOP: 335,
-        chess.ROOK: 500,
-        chess.QUEEN: 975,
-        chess.KING: 20000,
+        chess.KNIGHT: 305,      # Reduced: knights slightly less valuable
+        chess.BISHOP: 333,      # Slightly reduced but still > knight
+        chess.ROOK: 500,        # Unchanged
+        chess.QUEEN: 900,       # Reduced: queen often overvalued
+        chess.KING: 20000,      # Unchanged
     }
 
     # Mobility bonus per move for each piece type
