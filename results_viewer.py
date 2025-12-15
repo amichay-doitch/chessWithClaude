@@ -12,6 +12,11 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 import argparse
 
+# Fix Windows terminal encoding for Unicode box characters
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
 
 class ResultsViewer:
     """Analyzes and displays tournament results."""

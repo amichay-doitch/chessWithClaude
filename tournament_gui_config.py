@@ -114,7 +114,8 @@ class TournamentGUI:
             "depth1": 5,
             "depth2": 5,
             "num_games": 10,
-            "time_limit": None
+            "time_limit": None,
+            "output_dir": "games"
         }
 
         # Tournament state (initialized when tournament starts)
@@ -194,6 +195,24 @@ class TournamentGUI:
             btn.selected = (games == self.config["num_games"])
             self.games_buttons.append((btn, games))
 
+        # Time limit buttons
+        y += 80
+        self.time_limit_buttons = []
+        time_options = [("Depth", None), ("0.1s", 0.1), ("1s", 1.0), ("2s", 2.0), ("5s", 5.0), ("10s", 10.0)]
+        for i, (label, time_val) in enumerate(time_options):
+            btn = Button(panel_x + i * 50, y, 45, 35, label, BUTTON_COLOR)
+            btn.selected = (time_val == self.config["time_limit"])
+            self.time_limit_buttons.append((btn, time_val, label))
+
+        # Output directory buttons
+        y += 80
+        self.output_dir_buttons = []
+        output_dirs = ["games", "results", "matches", "tournaments"]
+        for i, dir_name in enumerate(output_dirs):
+            btn = Button(panel_x + i * 75, y, 70, 35, dir_name, BUTTON_COLOR)
+            btn.selected = (dir_name == self.config["output_dir"])
+            self.output_dir_buttons.append((btn, dir_name))
+
         # Start button
         self.config_start_button = Button(panel_x + 50, SCREEN_HEIGHT - 100, 300, 60,
                                          "START TOURNAMENT", GREEN)
@@ -203,22 +222,31 @@ class TournamentGUI:
 
     def load_pieces(self):
         """Load chess piece images."""
-        font_size = int(SQUARE_SIZE * 0.8)
         self.piece_font = None
 
-        # Try multiple fonts that support chess unicode
-        font_names = ['Segoe UI Symbol', 'Arial Unicode MS', 'DejaVu Sans', 'Noto Sans']
-        for font_name in font_names:
+        # Try loading chess font files first
+        chess_font_files = ['ChessMerida.ttf', 'ChessAlpha.ttf', 'chess_merida_unicode.ttf']
+        for font_file in chess_font_files:
             try:
-                self.piece_font = pygame.font.SysFont(font_name, font_size)
-                print(f"Loaded font: {font_name}")
+                self.piece_font = pygame.font.Font(font_file, 65)
+                print(f"Loaded chess font: {font_file}")
                 break
             except:
                 continue
 
+        # Fall back to system fonts if no chess font found
         if self.piece_font is None:
-            print("Warning: No unicode font found, using default")
-            self.piece_font = pygame.font.Font(None, font_size)
+            font_names = ['Segoe UI Symbol', 'Arial Unicode MS', 'DejaVu Sans', 'FreeSans']
+            for font_name in font_names:
+                try:
+                    self.piece_font = pygame.font.SysFont(font_name, 65)
+                    print(f"Loaded font: {font_name}")
+                    break
+                except:
+                    continue
+
+        if self.piece_font is None:
+            self.piece_font = pygame.font.Font(None, 65)
 
         self.piece_chars = {
             'P': '\u2659', 'N': '\u2658', 'B': '\u2657',
@@ -276,13 +304,32 @@ class TournamentGUI:
         for btn, games in self.games_buttons:
             btn.draw(self.screen, self.small_font)
 
+        # Time limit label and buttons
+        y += 80
+        time_label = self.font.render("Time per Move:", True, TEXT_COLOR)
+        self.screen.blit(time_label, (panel_x, y - 30))
+
+        for btn, time_val, label in self.time_limit_buttons:
+            btn.draw(self.screen, self.tiny_font)
+
+        # Output directory label and buttons
+        y += 80
+        output_label = self.font.render("Output Directory:", True, TEXT_COLOR)
+        self.screen.blit(output_label, (panel_x, y - 30))
+
+        for btn, dir_name in self.output_dir_buttons:
+            btn.draw(self.screen, self.tiny_font)
+
         # Current config display
         y += 80
+        time_display = f"{self.config['time_limit']}s per move" if self.config['time_limit'] else "Depth-based"
         config_text = [
             f"Ready to start:",
             f"{self.config['engine1']} (depth {self.config['depth1']}) vs",
             f"{self.config['engine2']} (depth {self.config['depth2']})",
-            f"{self.config['num_games']} games"
+            f"{self.config['num_games']} games",
+            f"Time: {time_display}",
+            f"Output: {self.config['output_dir']}"
         ]
         for i, line in enumerate(config_text):
             text = self.small_font.render(line, True, TEXT_COLOR)
@@ -345,6 +392,20 @@ class TournamentGUI:
                 for b, g in self.games_buttons:
                     b.selected = (g == games)
 
+        # Time limit selection
+        for btn, time_val, label in self.time_limit_buttons:
+            if btn.handle_event(event):
+                self.config["time_limit"] = time_val
+                for b, t, l in self.time_limit_buttons:
+                    b.selected = (t == time_val)
+
+        # Output directory selection
+        for btn, dir_name in self.output_dir_buttons:
+            if btn.handle_event(event):
+                self.config["output_dir"] = dir_name
+                for b, d in self.output_dir_buttons:
+                    b.selected = (d == dir_name)
+
         # Start button
         if self.config_start_button.handle_event(event):
             self.start_tournament_setup()
@@ -376,7 +437,7 @@ class TournamentGUI:
                 "start_time": None
             }
 
-            self.recorder = GameRecorder("games")
+            self.recorder = GameRecorder(self.config['output_dir'])
 
             # Create tournament buttons
             self.create_tournament_buttons()
@@ -443,27 +504,21 @@ class TournamentGUI:
                     piece_char = piece.symbol()
                     piece_unicode = self.piece_chars.get(piece_char)
                     if piece_unicode:
-                        center_x = x + SQUARE_SIZE // 2
-                        center_y = y + SQUARE_SIZE // 2
-
                         if piece.color == chess.WHITE:
-                            outline_color = (0, 0, 0)
-                            fill_color = (255, 255, 255)
+                            # White pieces: dark outline with white fill
+                            outline_surface = self.piece_font.render(piece_unicode, True, (50, 50, 50))
+                            text_rect = outline_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
+                            # Draw outline in 8 directions for thickness
+                            for dx, dy in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]:
+                                self.screen.blit(outline_surface, (text_rect.x + dx, text_rect.y + dy))
+                            # Draw white piece on top
+                            text_surface = self.piece_font.render(piece_unicode, True, (255, 255, 255))
+                            self.screen.blit(text_surface, text_rect)
                         else:
-                            outline_color = (255, 255, 255)
-                            fill_color = (0, 0, 0)
-
-                        # Draw thick outline
-                        outline_surface = self.piece_font.render(piece_unicode, True, outline_color)
-                        text_rect = outline_surface.get_rect(center=(center_x, center_y))
-                        for dx in range(-3, 4):
-                            for dy in range(-3, 4):
-                                if dx != 0 or dy != 0:
-                                    self.screen.blit(outline_surface, (text_rect.x + dx, text_rect.y + dy))
-
-                        # Draw piece fill on top
-                        fill_surface = self.piece_font.render(piece_unicode, True, fill_color)
-                        self.screen.blit(fill_surface, text_rect)
+                            # Black pieces: solid black with antialiasing
+                            text_surface = self.piece_font.render(piece_unicode, True, (30, 30, 30))
+                            text_rect = text_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
+                            self.screen.blit(text_surface, text_rect)
 
     def draw_tournament_panel(self):
         """Draw tournament statistics and control panel."""
@@ -600,7 +655,7 @@ class TournamentGUI:
                     break
 
                 if self.board.turn == chess.WHITE:
-                    result = white_engine.search(self.board)
+                    result = white_engine.search(self.board.copy())
                     if result and result.best_move:
                         self.current_move_info = {
                             'move': result.best_move.uci(),
@@ -613,7 +668,7 @@ class TournamentGUI:
                     else:
                         break
                 else:
-                    result = black_engine.search(self.board)
+                    result = black_engine.search(self.board.copy())
                     if result and result.best_move:
                         self.current_move_info = {
                             'move': result.best_move.uci(),

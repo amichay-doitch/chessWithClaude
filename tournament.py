@@ -103,7 +103,7 @@ class TournamentRunner:
             while not board.is_game_over() and move_count < max_moves:
                 # Get move from appropriate engine
                 if board.turn == chess.WHITE:
-                    result = white_engine.search(board)
+                    result = white_engine.search(board.copy())
                     if result and result.best_move:
                         board.push(result.best_move)
                         white_times.append(result.time_spent)
@@ -112,7 +112,7 @@ class TournamentRunner:
                         # Engine failed to find move
                         return self._handle_error(game_number, board, white_name, black_name, "white_error")
                 else:
-                    result = black_engine.search(board)
+                    result = black_engine.search(board.copy())
                     if result and result.best_move:
                         board.push(result.best_move)
                         black_times.append(result.time_spent)
@@ -416,3 +416,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # run with --engine1 engine_v3 --engine2 engine_v4 --games 10 --time 5 --depth1 8 --depth2 8

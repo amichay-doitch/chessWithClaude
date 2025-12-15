@@ -162,24 +162,31 @@ class TournamentGUI:
 
     def load_pieces(self):
         """Load chess piece images."""
-        # Try to load a font that supports chess unicode symbols
-        font_size = int(SQUARE_SIZE * 0.8)
         self.piece_font = None
 
-        # Try multiple fonts that support chess unicode
-        font_names = ['Segoe UI Symbol', 'Arial Unicode MS', 'DejaVu Sans', 'Noto Sans']
-        for font_name in font_names:
+        # Try loading chess font files first
+        chess_font_files = ['ChessMerida.ttf', 'ChessAlpha.ttf', 'chess_merida_unicode.ttf']
+        for font_file in chess_font_files:
             try:
-                self.piece_font = pygame.font.SysFont(font_name, font_size)
-                print(f"Loaded font: {font_name}")
+                self.piece_font = pygame.font.Font(font_file, 65)
+                print(f"Loaded chess font: {font_file}")
                 break
             except:
                 continue
 
-        # Fallback to default if no unicode font found
+        # Fall back to system fonts if no chess font found
         if self.piece_font is None:
-            print("Warning: No unicode font found, using default")
-            self.piece_font = pygame.font.Font(None, font_size)
+            font_names = ['Segoe UI Symbol', 'Arial Unicode MS', 'DejaVu Sans', 'FreeSans']
+            for font_name in font_names:
+                try:
+                    self.piece_font = pygame.font.SysFont(font_name, 65)
+                    print(f"Loaded font: {font_name}")
+                    break
+                except:
+                    continue
+
+        if self.piece_font is None:
+            self.piece_font = pygame.font.Font(None, 65)
 
         # Store piece unicode chars for rendering with outlines
         self.piece_chars = {
@@ -211,30 +218,21 @@ class TournamentGUI:
                     piece_char = piece.symbol()
                     piece_unicode = self.piece_chars.get(piece_char)
                     if piece_unicode:
-                        center_x = x + SQUARE_SIZE // 2
-                        center_y = y + SQUARE_SIZE // 2
-
-                        # Draw piece with thick colored outline for maximum visibility
                         if piece.color == chess.WHITE:
-                            # White pieces: thick black outline + white fill
-                            outline_color = (0, 0, 0)
-                            fill_color = (255, 255, 255)
+                            # White pieces: dark outline with white fill
+                            outline_surface = self.piece_font.render(piece_unicode, True, (50, 50, 50))
+                            text_rect = outline_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
+                            # Draw outline in 8 directions for thickness
+                            for dx, dy in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]:
+                                self.screen.blit(outline_surface, (text_rect.x + dx, text_rect.y + dy))
+                            # Draw white piece on top
+                            text_surface = self.piece_font.render(piece_unicode, True, (255, 255, 255))
+                            self.screen.blit(text_surface, text_rect)
                         else:
-                            # Black pieces: thick white outline + black fill
-                            outline_color = (255, 255, 255)
-                            fill_color = (0, 0, 0)
-
-                        # Draw thick outline
-                        outline_surface = self.piece_font.render(piece_unicode, True, outline_color)
-                        text_rect = outline_surface.get_rect(center=(center_x, center_y))
-                        for dx in range(-3, 4):
-                            for dy in range(-3, 4):
-                                if dx != 0 or dy != 0:
-                                    self.screen.blit(outline_surface, (text_rect.x + dx, text_rect.y + dy))
-
-                        # Draw piece fill on top
-                        fill_surface = self.piece_font.render(piece_unicode, True, fill_color)
-                        self.screen.blit(fill_surface, text_rect)
+                            # Black pieces: solid black with antialiasing
+                            text_surface = self.piece_font.render(piece_unicode, True, (30, 30, 30))
+                            text_rect = text_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
+                            self.screen.blit(text_surface, text_rect)
 
     def draw_panel(self):
         """Draw the statistics and control panel."""
