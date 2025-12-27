@@ -810,7 +810,6 @@ class ChessEngine:
                 if score >= beta:
                     return beta
 
-                else:
 
 
         moves = list(board.legal_moves)
