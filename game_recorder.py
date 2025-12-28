@@ -3,11 +3,12 @@ Game Recorder - PGN generation and storage for tournament games
 """
 
 import chess.pgn
+import chess.engine
 import os
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 
 
 class GameRecorder:
@@ -71,7 +72,8 @@ class GameRecorder:
                    white_engine: str, black_engine: str,
                    result: str, termination: str = "normal",
                    white_stats: Optional[Dict[str, Any]] = None,
-                   black_stats: Optional[Dict[str, Any]] = None) -> Path:
+                   black_stats: Optional[Dict[str, Any]] = None,
+                   move_annotations: Optional[List[Tuple]] = None) -> Path:
         """
         Record a single game in PGN format.
 
@@ -118,10 +120,52 @@ class GameRecorder:
             game.headers["BlackAvgNodes"] = str(int(black_stats.get('avg_nodes', 0)))
             game.headers["BlackAvgTime"] = f"{black_stats.get('avg_time', 0):.3f}"
 
-        # Add moves from board
+        # Add moves with annotations
         node = game
-        for move in board.move_stack:
-            node = node.add_variation(move)
+        temp_board = chess.Board()
+        time_control = self.match_metadata.get('time_control')
+        white_time = time_control * 60 if time_control else 0
+        black_time = time_control * 60 if time_control else 0
+
+        for i, move in enumerate(board.move_stack):
+            search_result = None
+            if move_annotations and i < len(move_annotations):
+                ann_move, search_result, color = move_annotations[i]
+                if ann_move != move:
+                    search_result = None
+
+            comment_parts = []
+            if search_result:
+                comment_parts.append(f"d={search_result.depth}")
+                comment_parts.append(f"n={search_result.nodes_searched:,}")
+                comment_parts.append(f"t={search_result.time_spent:.2f}s")
+                if search_result.time_spent > 0:
+                    nps = int(search_result.nodes_searched / search_result.time_spent)
+                    comment_parts.append(f"nps={nps:,}")
+
+            comment = ", ".join(comment_parts) if comment_parts else None
+            node = node.add_variation(move, comment=comment)
+
+            if search_result:
+                cp = search_result.score
+                pov_score = chess.engine.PovScore(chess.engine.Cp(cp), temp_board.turn)
+                node.set_eval(pov_score, depth=search_result.depth)
+
+            if time_control and search_result:
+                if temp_board.turn == chess.WHITE:
+                    white_time = max(0, white_time - search_result.time_spent)
+                    node.set_clock(white_time)
+                else:
+                    black_time = max(0, black_time - search_result.time_spent)
+                    node.set_clock(black_time)
+
+            temp_board.push(move)
+
+        opening_name, eco = self._detect_opening(temp_board)
+        if opening_name:
+            game.headers["Opening"] = opening_name
+        if eco:
+            game.headers["ECO"] = eco
 
         # Save to file
         filename = f"game_{game_number:03d}.pgn"
@@ -193,3 +237,33 @@ class GameRecorder:
     def get_games_recorded(self) -> int:
         """Get number of games recorded in current match."""
         return self.games_recorded
+
+    def _detect_opening(self, board: chess.Board) -> Tuple[Optional[str], Optional[str]]:
+        """Detect opening name and ECO code."""
+        if len(board.move_stack) < 2:
+            return None, None
+
+        temp = chess.Board()
+        moves = []
+        for i, move in enumerate(board.move_stack[:8]):
+            moves.append(temp.san(move))
+            temp.push(move)
+            if i >= 3:
+                break
+
+        patterns = {
+            ("e4", "e5"): ("King's Pawn", "C20"),
+            ("e4", "c5"): ("Sicilian", "B20"),
+            ("e4", "e6"): ("French", "C00"),
+            ("e4", "c6"): ("Caro-Kann", "B10"),
+            ("d4", "d5"): ("Queen's Pawn", "D00"),
+            ("d4", "Nf6"): ("Indian", "A45"),
+            ("c4",): ("English", "A10"),
+            ("Nf3",): ("Reti", "A04"),
+        }
+
+        for pattern, (name, eco) in patterns.items():
+            if len(moves) >= len(pattern):
+                if all(moves[i] == pattern[i] for i in range(len(pattern))):
+                    return name, eco
+        return None, None

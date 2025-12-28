@@ -1,8 +1,8 @@
 # Chess Engine - Implementation Roadmap
 
-**Last Updated:** 2025-12-15
-**Current Status:** v4.0 complete (+150-200 Elo over v3.0)
-**Project Status:** Active development - roadmap represents planned improvements
+**Last Updated:** 2025-12-28
+**Current Status:** v5/v7 engines complete, major UX improvements deployed
+**Project Status:** Active development - balanced engine improvement + user experience
 
 ---
 
@@ -10,14 +10,19 @@
 
 This roadmap outlines **potential future improvements** for the chess engine and tournament system. These are ideas and plans that can be pursued when ready.
 
-**Current Achievement:**
+**Recent Achievements (Dec 15-28):**
+- ✅ v5.0 and v7.0 engines developed
+- ✅ Fast engine variants (engine_fast, engine_v5_fast) for quick testing
+- ✅ Enhanced PGN recording with move annotations, evaluations, and opening detection
+- ✅ GUI improvements: engine selection, performance stats display (nodes/time/NPS)
+- ✅ PGN Viewer: evaluation bar visualization
+- ✅ Experimental engine_pool with LLM integrations (claude, gpt, gemini, etc.)
+
+**Previous Achievements:**
 - ✅ v4.0 engine with tuned piece values
 - ✅ Tournament system with GUI and CLI
 - ✅ PGN viewer for game analysis
 - ✅ Results viewer with statistics
-
-**Decision Point:**
-This comprehensive roadmap can be pursued for continued engine improvement, OR we can pivot to other chess-related features. The roadmap below is kept for reference and future development.
 
 ---
 
@@ -124,16 +129,21 @@ Neural network evaluation:
 
 ---
 
-## 📈 Expected Elo Progression
+## 📈 Elo Progression
 
-| Version | Changes | Expected Elo | Status |
+| Version | Changes | Elo vs v3.0 | Status |
 |---------|---------|--------------|--------|
 | v3.0 | Baseline | 0 | ✅ Complete |
 | v4.0 | Piece values | +150-200 | ✅ Complete |
-| v4.1 | +MVV-LVA, Passed pawns | +240-380 | 📋 Planned |
-| v4.2 | +King safety | +270-450 | 📋 Planned |
-| v5.0 | +Search extensions | +370-650 | 📋 Planned |
-| v6.0+ | +ML integration | +500-1000 | 💡 Concept |
+| v5.0 | Advanced improvements | TBD (needs testing) | ✅ Complete |
+| v5_fast | Optimized v5 variant | TBD | ✅ Complete |
+| v7.0 | Latest improvements | TBD (needs testing) | ✅ Complete |
+| engine_fast | Speed-optimized | TBD | ✅ Complete |
+| v8.0+ | +MVV-LVA, Passed pawns, King safety | +240-450 | 📋 Planned |
+| v9.0+ | +Search extensions | +370-650 | 📋 Planned |
+| vX.0+ | +ML integration | +500-1000 | 💡 Concept |
+
+**Note:** v5.0 and v7.0 need tournament validation against v3.0/v4.0 baseline to measure Elo gains.
 
 ---
 
@@ -166,22 +176,31 @@ python results_viewer.py games/engine_v3_vs_engine_v4/match_*/
 
 ## 🎯 Milestones
 
-### ✅ Milestone 1: v4.0 (COMPLETED)
+### ✅ Milestone 1: v4.0 (COMPLETED - Dec 15)
 - Piece value tuning
 - Tournament system
 - PGN viewer
 - Results analysis
 
-### 📋 Milestone 2: v4.1 (NEXT - If Continuing)
-- Move ordering improvements
-- Passed pawn evaluation
-- Target: +240-380 Elo over v3.0
+### ✅ Milestone 2: v5.0/v7.0 + UX Improvements (COMPLETED - Dec 28)
+- Multiple new engine versions (v5, v7, fast variants)
+- Enhanced PGN with annotations and evaluations
+- GUI engine selection and stats display
+- Evaluation bar in PGN viewer
+- Experimental LLM engine integrations
 
-### 💡 Milestone 3: v5.0 (Future)
+### 📋 Milestone 3: Engine Validation (NEXT)
+- Run comprehensive tournaments to benchmark v5.0 and v7.0
+- Measure Elo gains vs v3.0/v4.0 baselines
+- Identify strongest current engine
+- Document improvements in ENGINE_IMPROVEMENTS.md
+
+### 💡 Milestone 4: Advanced Search (Future)
+- MVV-LVA move ordering
+- Passed pawn evaluation
+- King safety improvements
 - Search extensions
-- Opening book
-- Adjudication
-- Target: +370-650 Elo over v3.0
+- Target: +240-650 Elo over current best
 
 ---
 
@@ -255,22 +274,36 @@ For detailed step-by-step implementation plans for each improvement, see:
 - CLI tournament runner
 - GUI tournament with config screen
 - Results viewer with statistics
-- PGN game recorder
+- PGN game recorder with full annotations
 - Opening positions database
 
 ### ✅ Analysis Tools
 - Results viewer with Elo estimates
 - PGN viewer for game replay
+- Evaluation bar visualization in PGN viewer
 - Performance metrics (nodes/time/NPS)
+- Move-by-move annotations (depth, nodes, time, NPS)
+- Opening detection and ECO codes
 
-### ✅ Engine v4.0
-- Piece value tuning (+150-200 Elo)
-- 70% win rate validation
-- Production ready
+### ✅ Engine Versions
+- v3.0: Baseline engine
+- v4.0: Piece value tuning (+150-200 Elo, 70% win rate)
+- v5.0: Advanced improvements
+- v5_fast: Speed-optimized v5
+- v7.0: Latest improvements
+- engine_fast: General speed optimization
+- engine_pool: Experimental LLM integrations (Claude, GPT, Gemini, Kimi, etc.)
+
+### ✅ GUI/UX Improvements (Dec 28)
+- Engine selection in GUI setup screen (5 engines available)
+- Real-time performance stats display (nodes, time, NPS)
+- Enhanced PGN annotations with evaluations and clock times
+- Opening name and ECO code detection
+- Improved visual feedback and statistics
 
 ---
 
 **Note:** This roadmap is maintained for reference and future development. It represents well-researched improvement ideas but does not commit to implementing all features. Development direction can change based on interest, time, and priorities.
 
-**Last Updated:** 2025-12-15
-**Status:** Reference Document - Use as needed for future development
+**Last Updated:** 2025-12-28
+**Status:** Active Development - Balanced engine improvement + user experience features

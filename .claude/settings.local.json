@@ -4,7 +4,14 @@
       "Bash(python3:*)",
       "Bash(ls:*)",
       "Bash(python tournament_gui.py:*)",
-      "Bash(python tournament_gui_config.py:*)"
+      "Bash(python tournament_gui_config.py:*)",
+      "Bash(python results_viewer.py:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(git checkout:*)",
+      "Bash(dir /O-D /B gamesengine_v5_vs_engine_fast)",
+      "Bash(pkill:*)",
+      "Bash(taskkill /F /FI \"WINDOWTITLE eq python*tournament*\")"
     ],
     "deny": [],
     "ask": []

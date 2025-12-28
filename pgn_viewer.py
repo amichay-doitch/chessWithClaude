@@ -100,6 +100,7 @@ class PGNViewer:
         self.board = None
         self.moves = []
         self.move_sans = []  # SAN notation for each move
+        self.evaluations = []  # Evaluation scores for each move
         self.current_move_index = -1  # -1 means starting position
         self.last_move = None
 
@@ -156,7 +157,7 @@ class PGNViewer:
 
     def create_viewer_ui(self):
         """Create viewer control buttons."""
-        panel_x = BOARD_SIZE + 20
+        panel_x = BOARD_SIZE + 50  # Match panel position
         button_y = SCREEN_HEIGHT - 200
         button_width = 100
         button_height = 45
@@ -209,9 +210,10 @@ class PGNViewer:
                     "Site": self.game.headers.get("Site", "Unknown"),
                 }
 
-                # Build move list and SAN notation
+                # Build move list, SAN notation, and evaluations
                 self.moves = []
                 self.move_sans = []
+                self.evaluations = []
                 temp_board = chess.Board()
                 node = self.game
                 while node.variations:
@@ -219,6 +221,24 @@ class PGNViewer:
                     move = next_node.move
                     self.moves.append(move)
                     self.move_sans.append(temp_board.san(move))
+
+                    # Extract evaluation if available
+                    eval_score = None
+                    if next_node.eval():
+                        try:
+                            pov_score = next_node.eval()
+                            # Convert to centipawns from white's perspective
+                            if pov_score.is_mate():
+                                # Mate score
+                                mate_in = pov_score.relative.moves
+                                eval_score = 10000 if mate_in > 0 else -10000
+                            else:
+                                # Centipawn score
+                                eval_score = pov_score.white().score()
+                        except:
+                            eval_score = None
+
+                    self.evaluations.append(eval_score)
                     temp_board.push(move)
                     node = next_node
 
@@ -333,6 +353,59 @@ class PGNViewer:
                             text_rect = text_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
                             self.screen.blit(text_surface, text_rect)
 
+    def draw_eval_bar(self):
+        """Draw evaluation bar showing position evaluation."""
+        if self.current_move_index < 0 or self.current_move_index >= len(self.evaluations):
+            eval_score = 0  # Starting position
+        else:
+            eval_score = self.evaluations[self.current_move_index]
+
+        if eval_score is None:
+            return  # No evaluation available
+
+        # Bar dimensions
+        bar_width = 30
+        bar_height = BOARD_SIZE
+        bar_x = BOARD_SIZE + 10
+        bar_y = (SCREEN_HEIGHT - BOARD_SIZE) // 2
+
+        # Clamp evaluation to reasonable range for display
+        clamped_eval = max(-1000, min(1000, eval_score))
+
+        # Calculate height ratio (0.5 = equal, 1.0 = white winning, 0.0 = black winning)
+        # Use tanh-like scaling for better visual
+        ratio = 0.5 + (clamped_eval / 2000.0)
+        ratio = max(0.0, min(1.0, ratio))
+
+        white_height = int(bar_height * ratio)
+        black_height = bar_height - white_height
+
+        # Draw bar background
+        pygame.draw.rect(self.screen, (60, 60, 60), (bar_x, bar_y, bar_width, bar_height))
+
+        # Draw black portion (top)
+        if black_height > 0:
+            pygame.draw.rect(self.screen, (40, 40, 40), (bar_x, bar_y, bar_width, black_height))
+
+        # Draw white portion (bottom)
+        if white_height > 0:
+            pygame.draw.rect(self.screen, (240, 240, 240), (bar_x, bar_y + black_height, bar_width, white_height))
+
+        # Draw border
+        pygame.draw.rect(self.screen, (20, 20, 20), (bar_x, bar_y, bar_width, bar_height), 2)
+
+        # Draw evaluation text
+        if abs(eval_score) >= 9000:
+            eval_text = "M" + str(abs(eval_score) // 100)
+        else:
+            eval_text = f"{eval_score / 100:.1f}"
+
+        font = self.tiny_font
+        text_color = (255, 200, 0)  # Orange/gold color - visible on both dark and light
+        text_surface = font.render(eval_text, True, text_color)
+        text_rect = text_surface.get_rect(center=(bar_x + bar_width // 2, bar_y + bar_height // 2))
+        self.screen.blit(text_surface, text_rect)
+
     def draw_select_screen(self):
         """Draw file selection screen."""
         self.screen.fill(BG_COLOR)
@@ -368,6 +441,9 @@ class PGNViewer:
         # Draw panel
         self.draw_panel()
 
+        # Draw evaluation bar (after panel so it's on top)
+        self.draw_eval_bar()
+
         # Draw buttons
         self.start_btn.draw(self.screen, self.font)
         self.prev_btn.draw(self.screen, self.font)
@@ -377,10 +453,10 @@ class PGNViewer:
 
     def draw_panel(self):
         """Draw information panel."""
-        panel_x = BOARD_SIZE
+        panel_x = BOARD_SIZE + 50  # Leave space for eval bar
 
         # Panel background
-        panel_rect = pygame.Rect(panel_x, 0, PANEL_WIDTH, SCREEN_HEIGHT)
+        panel_rect = pygame.Rect(panel_x, 0, PANEL_WIDTH - 50, SCREEN_HEIGHT)
         pygame.draw.rect(self.screen, PANEL_BG, panel_rect)
         pygame.draw.line(self.screen, (220, 220, 220), (panel_x, 0), (panel_x, SCREEN_HEIGHT), 2)
 

@@ -6,6 +6,7 @@ import pygame
 import chess
 import sys
 import threading
+import importlib
 from board import ChessBoard
 from engine import ChessEngine, SearchResult
 
@@ -34,7 +35,7 @@ SQUARE_SIZE = 80
 BOARD_SIZE = SQUARE_SIZE * 8
 PANEL_WIDTH = 250
 WINDOW_WIDTH = BOARD_SIZE + PANEL_WIDTH
-WINDOW_HEIGHT = BOARD_SIZE
+WINDOW_HEIGHT = 750  # Increased to fit all setup options
 
 # Fonts
 pygame.font.init()
@@ -81,6 +82,7 @@ class SetupScreen:
         self.selected_color = chess.WHITE  # Default to white
         self.selected_depth = 5  # Default depth
         self.time_limit = 1  # 1 second limit is the default
+        self.selected_engine = "engine_v5_fast"  # Default to fastest engine
 
         # Setup buttons
         center_x = WINDOW_WIDTH // 2
@@ -106,8 +108,29 @@ class SetupScreen:
             btn = Button(x, 500, 95, 45, label, lambda t=time_val: self.set_time(t))
             self.time_buttons.append((btn, time_val))
 
+        # Engine selection buttons - arranged in 2 rows
+        self.engine_buttons = []
+        engine_options = [
+            ("V5-FAST ⚡", "engine_v5_fast"),
+            ("V5 🏆 Best", "engine_v5"),
+            ("V7", "engine_v7"),
+            ("V3", "engine_v3"),
+            ("Base", "engine")
+        ]
+        for i, (label, engine_name) in enumerate(engine_options):
+            if i < 3:
+                # First row
+                x = center_x - 165 + i * 110
+                y = 580
+            else:
+                # Second row
+                x = center_x - 110 + (i - 3) * 110
+                y = 630
+            btn = Button(x, y, 100, 40, label, lambda e=engine_name: self.set_engine(e))
+            self.engine_buttons.append((btn, engine_name))
+
         # Start button
-        self.start_button = Button(center_x - 100, 580, 200, 60, "START GAME", None)
+        self.start_button = Button(center_x - 100, 690, 200, 50, "START GAME", None)
 
     def set_color(self, color):
         self.selected_color = color
@@ -117,6 +140,9 @@ class SetupScreen:
 
     def set_time(self, time_limit):
         self.time_limit = time_limit
+
+    def set_engine(self, engine_name):
+        self.selected_engine = engine_name
 
     def draw(self):
         self.screen.fill(PANEL_BG)
@@ -163,6 +189,18 @@ class SetupScreen:
                                border_radius=7)
             btn.draw(self.screen)
 
+        # Engine selection label
+        engine_label = FONT_LARGE.render("Choose Engine:", True, PANEL_TEXT)
+        self.screen.blit(engine_label, (WINDOW_WIDTH // 2 - 100, 530))
+
+        # Draw engine buttons with selection indicator
+        for btn, engine_name in self.engine_buttons:
+            if self.selected_engine == engine_name:
+                pygame.draw.rect(self.screen, HIGHLIGHT,
+                               (btn.rect.x - 3, btn.rect.y - 3, btn.rect.width + 6, btn.rect.height + 6),
+                               border_radius=7)
+            btn.draw(self.screen)
+
         # Draw start button
         self.start_button.draw(self.screen)
 
@@ -179,6 +217,10 @@ class SetupScreen:
         for btn, _ in self.time_buttons:
             btn.handle_event(event)
 
+        # Handle engine buttons
+        for btn, _ in self.engine_buttons:
+            btn.handle_event(event)
+
         # Handle start button
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.start_button.rect.collidepoint(event.pos):
@@ -189,6 +231,7 @@ class SetupScreen:
             all_buttons = [self.white_button, self.black_button, self.start_button]
             all_buttons.extend([btn for btn, _ in self.depth_buttons])
             all_buttons.extend([btn for btn, _ in self.time_buttons])
+            all_buttons.extend([btn for btn, _ in self.engine_buttons])
             for btn in all_buttons:
                 btn.hovered = btn.rect.collidepoint(event.pos)
 
@@ -196,12 +239,24 @@ class SetupScreen:
 
 
 class ChessGUI:
-    def __init__(self, player_color=chess.WHITE, engine_depth=5, time_limit=None):
-        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    def __init__(self, player_color=chess.WHITE, engine_depth=5, time_limit=None, engine_module="engine"):
+        # Use board size for game window
+        self.screen = pygame.display.set_mode((BOARD_SIZE + PANEL_WIDTH, BOARD_SIZE))
         pygame.display.set_caption("Chess Engine - chessWithClaude")
 
         self.board = ChessBoard()
-        self.engine = ChessEngine(max_depth=engine_depth, time_limit=time_limit)
+
+        # Load engine dynamically
+        try:
+            engine_mod = importlib.import_module(engine_module)
+            self.engine = engine_mod.ChessEngine(max_depth=engine_depth, time_limit=time_limit)
+            self.engine_name = engine_module
+        except Exception as e:
+            print(f"Error loading engine {engine_module}: {e}")
+            # Fallback to default engine
+            from engine import ChessEngine
+            self.engine = ChessEngine(max_depth=engine_depth, time_limit=time_limit)
+            self.engine_name = "engine"
 
         self.selected_square = None
         self.legal_moves_for_selected = []
@@ -219,6 +274,7 @@ class ChessGUI:
         self.hint_message = None  # Store hint message separately
         self.viewing_history = False  # True when viewing past positions
         self.current_move_index = None  # Index of move being viewed (None = current position)
+        self.last_search_stats = None  # Store last search statistics for display
 
         # Create piece font (larger for rendering)
         # Try to load a chess TTF font file first, then fall back to system fonts
@@ -327,8 +383,8 @@ class ChessGUI:
         try:
             board_copy = self.board.board.copy()
             # Use depth 3 with 2 second time limit for quick hints
-            from engine import ChessEngine
-            hint_engine = ChessEngine(max_depth=3, time_limit=2.0)
+            engine_mod = importlib.import_module(self.engine_name)
+            hint_engine = engine_mod.ChessEngine(max_depth=3, time_limit=2.0)
             result = hint_engine.search(board_copy)
 
             if result and result.best_move:
@@ -524,7 +580,8 @@ class ChessGUI:
 
         # Engine status - compact
         info_y = 120
-        depth_text = FONT_SMALL.render(f"Engine: Depth {self.engine.max_depth}", True, (180, 180, 180))
+        engine_display = self.engine_name.replace("engine_v", "V").replace("engine", "Base").replace("_fast", " FAST")
+        depth_text = FONT_SMALL.render(f"Engine: {engine_display} D{self.engine.max_depth}", True, (180, 180, 180))
         self.screen.blit(depth_text, (BOARD_SIZE + 20, info_y))
 
         if self.engine_thinking:
@@ -534,17 +591,43 @@ class ChessGUI:
             hint_status = FONT_SMALL.render("Calculating hint...", True, (255, 200, 50))
             self.screen.blit(hint_status, (BOARD_SIZE + 20, info_y + 20))
 
-        # Display hint message if available
+        # Display last search statistics
+        if self.last_search_stats and not self.engine_thinking:
+            stats = self.last_search_stats
+            nps = int(stats.nodes_searched / stats.time_spent) if stats.time_spent > 0 else 0
+
+            # Format NPS with K/M suffix
+            if nps >= 1000000:
+                nps_text = f"{nps/1000000:.1f}M"
+            elif nps >= 1000:
+                nps_text = f"{nps/1000:.1f}K"
+            else:
+                nps_text = str(nps)
+
+            stats_y = info_y + 20
+            nodes_text = FONT_SMALL.render(f"Nodes: {stats.nodes_searched:,}", True, (150, 200, 150))
+            self.screen.blit(nodes_text, (BOARD_SIZE + 20, stats_y))
+
+            time_text = FONT_SMALL.render(f"Time: {stats.time_spent:.2f}s", True, (150, 200, 150))
+            self.screen.blit(time_text, (BOARD_SIZE + 20, stats_y + 18))
+
+            nps_color = (100, 255, 100) if nps >= 5000 else (150, 200, 150)
+            nps_display = FONT_SMALL.render(f"Speed: {nps_text} NPS", True, nps_color)
+            self.screen.blit(nps_display, (BOARD_SIZE + 20, stats_y + 36))
+
+        # Display hint message if available (adjusted position for stats)
+        hint_y = info_y + 75 if self.last_search_stats else info_y + 40
         if self.hint_message and not self.hint_thinking:
             hint_text = FONT_SMALL.render(self.hint_message, True, (100, 220, 100))
-            self.screen.blit(hint_text, (BOARD_SIZE + 20, info_y + 40))
+            self.screen.blit(hint_text, (BOARD_SIZE + 20, hint_y))
 
-        # Show indicator when viewing history
+        # Show indicator when viewing history (adjusted position)
+        history_y = info_y + 100 if self.last_search_stats else info_y + 65
         if self.viewing_history:
             history_indicator = FONT.render("VIEWING HISTORY", True, (255, 150, 50))
-            self.screen.blit(history_indicator, (BOARD_SIZE + 20, info_y + 65))
+            self.screen.blit(history_indicator, (BOARD_SIZE + 20, history_y))
             click_hint = FONT_SMALL.render("Click board to return", True, (200, 200, 200))
-            self.screen.blit(click_hint, (BOARD_SIZE + 20, info_y + 88))
+            self.screen.blit(click_hint, (BOARD_SIZE + 20, history_y + 23))
 
         # Move history - more compact with proper chess notation
         history_y = 170
@@ -707,12 +790,20 @@ class ChessGUI:
         self.engine_thinking = False
         self.engine_done = False
 
+        # Store search stats for display
+        self.last_search_stats = result
+
         if result.best_move:
             self.board.make_move_object(result.best_move)
             self.last_move = result.best_move
 
             score_text = f"{result.score/100:+.2f}" if abs(result.score) < 90000 else "Mate"
             self.status_message = f"Engine: {result.best_move} ({score_text})"
+
+            # Print stats to console
+            nps = int(result.nodes_searched / result.time_spent) if result.time_spent > 0 else 0
+            print(f"\n{self.engine_name} played: {result.best_move} (eval: {score_text})")
+            print(f"  Depth: {result.depth} | Nodes: {result.nodes_searched:,} | Time: {result.time_spent:.2f}s | Speed: {nps:,} NPS")
 
             if self.board.is_game_over():
                 self.status_message = self.board.get_result()
@@ -776,7 +867,7 @@ class ChessGUI:
 
 
 def main():
-    # Initialize pygame and create window
+    # Initialize pygame and create window with larger height for setup screen
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     pygame.display.set_caption("Chess Engine - chessWithClaude")
     clock = pygame.time.Clock()
@@ -809,7 +900,8 @@ def main():
             gui = ChessGUI(
                 player_color=setup.selected_color,
                 engine_depth=setup.selected_depth,
-                time_limit=setup.time_limit
+                time_limit=setup.time_limit,
+                engine_module=setup.selected_engine
             )
             gui.run()
 

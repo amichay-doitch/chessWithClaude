@@ -92,6 +92,7 @@ class TournamentRunner:
         white_nodes_list = []
         black_times = []
         black_nodes_list = []
+        move_annotations = []  # Track per-move data for PGN
 
         move_count = 0
         max_moves = 500  # Prevent infinite games
@@ -105,6 +106,7 @@ class TournamentRunner:
                 if board.turn == chess.WHITE:
                     result = white_engine.search(board.copy())
                     if result and result.best_move:
+                        move_annotations.append((result.best_move, result, chess.WHITE))
                         board.push(result.best_move)
                         white_times.append(result.time_spent)
                         white_nodes_list.append(result.nodes_searched)
@@ -114,6 +116,7 @@ class TournamentRunner:
                 else:
                     result = black_engine.search(board.copy())
                     if result and result.best_move:
+                        move_annotations.append((result.best_move, result, chess.BLACK))
                         board.push(result.best_move)
                         black_times.append(result.time_spent)
                         black_nodes_list.append(result.nodes_searched)
@@ -166,7 +169,8 @@ class TournamentRunner:
         # Record game
         pgn_path = self.recorder.record_game(
             board, game_number, white_name, black_name,
-            result_str, termination, white_stats, black_stats
+            result_str, termination, white_stats, black_stats,
+            move_annotations=move_annotations
         )
 
         if not self.quiet:
@@ -417,3 +421,4 @@ def main():
 if __name__ == "__main__":
     main()
     # run with --engine1 engine_v3 --engine2 engine_v4 --games 10 --time 5 --depth1 8 --depth2 8
+    # --engine1 engine_v5 --engine2 engine_fast --games 2 --depth1 20 --depth2 20 --time 2.0
