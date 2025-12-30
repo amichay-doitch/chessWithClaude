@@ -7,33 +7,19 @@ import chess
 import sys
 import threading
 import importlib
-import glob
-import os
 from board import ChessBoard
 from engine import ChessEngine, SearchResult
+from gui_utils import (
+    Button, Dropdown, ChessBoardRenderer,
+    find_all_engines, format_engine_name,
+    WHITE, BLACK, LIGHT_SQUARE, DARK_SQUARE, HIGHLIGHT, SELECTED,
+    LAST_MOVE, CHECK_COLOR, BUTTON_COLOR, BUTTON_HOVER, TEXT_COLOR,
+    PANEL_BG, PANEL_TEXT, MOVE_DOT, CAPTURE_RING,
+    DROPDOWN_BG, DROPDOWN_HOVER, DROPDOWN_SELECTED, PIECE_UNICODE
+)
 
 # Initialize pygame
 pygame.init()
-
-# Colors - Polished chess.com style
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-LIGHT_SQUARE = (240, 217, 181)   # Warm cream
-DARK_SQUARE = (181, 136, 99)     # Warm brown
-HIGHLIGHT = (130, 151, 105)      # Soft green for legal moves
-SELECTED = (246, 246, 105)       # Bright yellow for selected
-LAST_MOVE = (170, 162, 58)       # Golden yellow for last move (both squares)
-CHECK_COLOR = (231, 76, 60)      # Bright red for check
-BUTTON_COLOR = (52, 73, 94)      # Dark blue-gray
-BUTTON_HOVER = (71, 101, 130)    # Lighter blue on hover
-TEXT_COLOR = (50, 50, 50)
-PANEL_BG = (38, 38, 38)          # Darker panel background
-PANEL_TEXT = (230, 230, 230)     # Light text on dark panel
-MOVE_DOT = (80, 80, 80, 180)     # Semi-transparent dots for legal moves
-CAPTURE_RING = (80, 80, 80, 200) # Semi-transparent ring for captures
-DROPDOWN_BG = (45, 45, 45)
-DROPDOWN_HOVER = (60, 60, 60)
-DROPDOWN_SELECTED = (75, 110, 140)
 
 # Board settings
 SQUARE_SIZE = 80
@@ -48,256 +34,6 @@ FONT = pygame.font.SysFont('Arial', 20)
 FONT_SMALL = pygame.font.SysFont('Arial', 16)
 FONT_TINY = pygame.font.SysFont('Arial', 14)
 FONT_LARGE = pygame.font.SysFont('Arial', 28, bold=True)
-
-# Unicode chess pieces
-PIECE_UNICODE = {
-    'P': '\u2659', 'N': '\u2658', 'B': '\u2657', 'R': '\u2656', 'Q': '\u2655', 'K': '\u2654',
-    'p': '\u265F', 'n': '\u265E', 'b': '\u265D', 'r': '\u265C', 'q': '\u265B', 'k': '\u265A',
-}
-
-def find_all_engines():
-    """Dynamically find all chess engines in the project."""
-    engines = []
-
-    # Search in current directory
-    for file in glob.glob("engine*.py"):
-        if file == "benchmark_engines.py":  # Skip utility files
-            continue
-        module_name = file[:-3]
-        display_name = format_engine_name(module_name)
-        engines.append((module_name, display_name, "local"))
-
-    # Search in engine_pool directory
-    if os.path.exists("engine_pool"):
-        for file in glob.glob("engine_pool/*.py"):
-            if file.endswith("__init__.py"):
-                continue
-            # Get just the filename without path
-            filename = os.path.basename(file)[:-3]
-            module_name = f"engine_pool.{filename}"
-            display_name = format_engine_name(filename)
-            engines.append((module_name, display_name, "pool"))
-
-    # Sort: prioritize optimized local engines, then others
-    def sort_key(item):
-        module_name, display_name, source = item
-        if "optimized" in module_name:
-            return (0, display_name)
-        elif source == "local" and "v5" in module_name:
-            return (1, display_name)
-        elif source == "local":
-            return (2, display_name)
-        else:  # pool engines
-            return (3, display_name)
-
-    engines.sort(key=sort_key)
-    return engines if engines else [("engine", "Basic Engine", "local")]
-
-
-def format_engine_name(module_name):
-    """Format engine module name for display."""
-    # Remove engine_pool prefix if present
-    name = module_name.replace("engine_pool.", "")
-
-    # Special formatting for known engines
-    if "engine_v5_optimized" in name:
-        return "⚡ V5 Optimized (FASTEST)"
-    elif "engine_v5_fast" in name:
-        return "V5 Fast"
-    elif "engine_v5" in name:
-        return "V5 (Best)"
-    elif "engine_v4" in name:
-        return "V4"
-    elif "engine_v3" in name:
-        return "V3"
-    elif "engine_fast" in name:
-        return "Fast Engine"
-    elif name == "engine":
-        return "Basic Engine"
-    else:
-        # Capitalize pool engines
-        return name.replace("_", " ").title()
-
-
-class Button:
-    def __init__(self, x, y, width, height, text, callback):
-        self.rect = pygame.Rect(x, y, width, height)
-        self.text = text
-        self.callback = callback
-        self.hovered = False
-
-    def draw(self, screen):
-        color = BUTTON_HOVER if self.hovered else BUTTON_COLOR
-        pygame.draw.rect(screen, color, self.rect, border_radius=5)
-        pygame.draw.rect(screen, BLACK, self.rect, 2, border_radius=5)
-
-        text_surface = FONT.render(self.text, True, WHITE)
-        text_rect = text_surface.get_rect(center=self.rect.center)
-        screen.blit(text_surface, text_rect)
-
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEMOTION:
-            self.hovered = self.rect.collidepoint(event.pos)
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            if self.rect.collidepoint(event.pos):
-                self.callback()
-                return True
-        return False
-
-
-class Dropdown:
-    """Dropdown menu widget for engine selection with scrolling."""
-    def __init__(self, x, y, width, items, default_index=0, max_visible=None):
-        self.rect = pygame.Rect(x, y, width, 40)
-        self.items = items  # List of (module_name, display_name, source) tuples
-        self.selected_index = default_index
-        self.is_open = False
-        self.hovered_index = -1
-        self.scroll_offset = 0  # For scrolling through items
-        # Max items visible at once (fit in screen)
-        self.max_visible = max_visible if max_visible else 10
-
-    def get_selected(self):
-        """Get the selected engine module name."""
-        return self.items[self.selected_index][0]
-
-    def get_dropdown_rect(self):
-        """Get the rect for the dropped down menu."""
-        item_height = 35
-        visible_items = min(len(self.items), self.max_visible)
-        return pygame.Rect(self.rect.x, self.rect.y + self.rect.height,
-                          self.rect.width, visible_items * item_height)
-
-    def draw(self, screen):
-        # Draw main button
-        color = BUTTON_HOVER if self.is_open else BUTTON_COLOR
-        pygame.draw.rect(screen, color, self.rect, border_radius=5)
-        pygame.draw.rect(screen, (100, 100, 100), self.rect, 2, border_radius=5)
-
-        # Draw selected item text
-        _, display_name, source = self.items[self.selected_index]
-        source_icon = "" if source == "local" else "📦 "
-        # Show count if many items
-        count_text = f" ({len(self.items)} engines)" if len(self.items) > 10 else ""
-        display_text = f"{source_icon}{display_name}{count_text if not self.is_open else ''}"
-        text = FONT_SMALL.render(display_text, True, WHITE)
-        text_rect = text.get_rect(midleft=(self.rect.x + 10, self.rect.centery))
-        # Truncate if too long
-        max_width = self.rect.width - 40
-        if text.get_width() > max_width:
-            display_text = f"{source_icon}{display_name}"
-            text = FONT_SMALL.render(display_text, True, WHITE)
-        screen.blit(text, text_rect)
-
-        # Draw dropdown arrow
-        arrow = "▼" if not self.is_open else "▲"
-        arrow_text = FONT_SMALL.render(arrow, True, WHITE)
-        arrow_rect = arrow_text.get_rect(midright=(self.rect.right - 10, self.rect.centery))
-        screen.blit(arrow_text, arrow_rect)
-
-        # Draw dropdown list if open
-        if self.is_open:
-            dropdown_rect = self.get_dropdown_rect()
-            # Background
-            pygame.draw.rect(screen, DROPDOWN_BG, dropdown_rect, border_radius=5)
-            pygame.draw.rect(screen, (100, 100, 100), dropdown_rect, 2, border_radius=5)
-
-            # Calculate visible range based on scroll
-            total_items = len(self.items)
-            start_idx = self.scroll_offset
-            end_idx = min(start_idx + self.max_visible, total_items)
-
-            # Draw items
-            item_height = 35
-            for i in range(start_idx, end_idx):
-                display_idx = i - start_idx  # Index in visible area
-                item_rect = pygame.Rect(dropdown_rect.x, dropdown_rect.y + display_idx * item_height,
-                                       dropdown_rect.width, item_height)
-
-                # Highlight selected or hovered
-                if i == self.selected_index:
-                    pygame.draw.rect(screen, DROPDOWN_SELECTED, item_rect)
-                elif i == self.hovered_index:
-                    pygame.draw.rect(screen, DROPDOWN_HOVER, item_rect)
-
-                # Draw text
-                _, display_name, source = self.items[i]
-                source_icon = "" if source == "local" else "📦 "
-                item_text = FONT_TINY.render(f"{source_icon}{display_name}", True, WHITE)
-                item_text_rect = item_text.get_rect(midleft=(item_rect.x + 10, item_rect.centery))
-                screen.blit(item_text, item_text_rect)
-
-            # Draw scroll indicator if needed
-            if total_items > self.max_visible:
-                # Draw scrollbar on the right
-                scrollbar_x = dropdown_rect.right - 8
-                scrollbar_height = dropdown_rect.height
-                scroll_ratio = self.scroll_offset / max(1, total_items - self.max_visible)
-                thumb_height = max(20, scrollbar_height * self.max_visible / total_items)
-                thumb_y = dropdown_rect.y + scroll_ratio * (scrollbar_height - thumb_height)
-
-                pygame.draw.rect(screen, (80, 80, 80),
-                               (scrollbar_x, thumb_y, 6, thumb_height), border_radius=3)
-
-                # Show scroll hint text
-                showing_text = f"Showing {start_idx+1}-{end_idx} of {total_items}"
-                hint_surface = FONT_TINY.render(showing_text, True, (150, 150, 150))
-                hint_rect = hint_surface.get_rect(center=(dropdown_rect.centerx, dropdown_rect.bottom + 12))
-                screen.blit(hint_surface, hint_rect)
-
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:  # Left click
-                if self.rect.collidepoint(event.pos):
-                    # Toggle dropdown
-                    self.is_open = not self.is_open
-                    if self.is_open:
-                        # Reset scroll when opening
-                        self.scroll_offset = 0
-                    return True
-                elif self.is_open:
-                    # Check if clicked on dropdown item
-                    dropdown_rect = self.get_dropdown_rect()
-                    if dropdown_rect.collidepoint(event.pos):
-                        # Calculate which item was clicked (accounting for scroll)
-                        item_height = 35
-                        rel_y = event.pos[1] - dropdown_rect.y
-                        clicked_display_idx = rel_y // item_height
-                        clicked_actual_idx = self.scroll_offset + clicked_display_idx
-                        if 0 <= clicked_actual_idx < len(self.items):
-                            self.selected_index = clicked_actual_idx
-                            self.is_open = False
-                            return True
-                    else:
-                        # Clicked outside, close dropdown
-                        self.is_open = False
-
-            # Mouse wheel scrolling
-            elif event.button == 4 and self.is_open:  # Scroll up
-                dropdown_rect = self.get_dropdown_rect()
-                if dropdown_rect.collidepoint(event.pos):
-                    self.scroll_offset = max(0, self.scroll_offset - 1)
-                    return True
-
-            elif event.button == 5 and self.is_open:  # Scroll down
-                dropdown_rect = self.get_dropdown_rect()
-                if dropdown_rect.collidepoint(event.pos):
-                    max_scroll = max(0, len(self.items) - self.max_visible)
-                    self.scroll_offset = min(max_scroll, self.scroll_offset + 1)
-                    return True
-
-        elif event.type == pygame.MOUSEMOTION and self.is_open:
-            dropdown_rect = self.get_dropdown_rect()
-            if dropdown_rect.collidepoint(event.pos):
-                # Calculate which item is hovered (accounting for scroll)
-                item_height = 35
-                rel_y = event.pos[1] - dropdown_rect.y
-                hovered_display_idx = rel_y // item_height
-                self.hovered_index = self.scroll_offset + hovered_display_idx
-            else:
-                self.hovered_index = -1
-
-        return False
 
 
 class SetupScreen:
@@ -518,31 +254,8 @@ class ChessGUI:
         self.current_move_index = None  # Index of move being viewed (None = current position)
         self.last_search_stats = None  # Store last search statistics for display
 
-        # Create piece font (larger for rendering)
-        self.piece_font = None
-
-        # Try loading chess font files
-        chess_font_files = ['ChessMerida.ttf', 'ChessAlpha.ttf', 'chess_merida_unicode.ttf']
-        for font_file in chess_font_files:
-            try:
-                self.piece_font = pygame.font.Font(font_file, 65)
-                print(f"Loaded chess font: {font_file}")
-                break
-            except:
-                continue
-
-        # Fall back to system fonts if no chess font found
-        if self.piece_font is None:
-            piece_font_names = ['Segoe UI Symbol', 'Arial Unicode MS', 'DejaVu Sans', 'FreeSans']
-            for font_name in piece_font_names:
-                try:
-                    self.piece_font = pygame.font.SysFont(font_name, 65)
-                    break
-                except:
-                    continue
-
-        if self.piece_font is None:
-            self.piece_font = pygame.font.SysFont(None, 65)
+        # Create board renderer
+        self.board_renderer = ChessBoardRenderer(SQUARE_SIZE)
 
         # Buttons
         self.buttons = [
@@ -682,96 +395,18 @@ class ChessGUI:
     def draw_board(self):
         display_board = self.get_display_board()
 
-        # Draw squares
-        for row in range(8):
-            for col in range(8):
-                x = col * SQUARE_SIZE
-                y = row * SQUARE_SIZE
-
-                if self.flipped:
-                    actual_col = 7 - col
-                    actual_row = row
-                else:
-                    actual_col = col
-                    actual_row = 7 - row
-
-                square = chess.square(actual_col, actual_row)
-
-                # Base color
-                if (row + col) % 2 == 0:
-                    color = LIGHT_SQUARE
-                else:
-                    color = DARK_SQUARE
-
-                # Highlight last move
-                if self.last_move:
-                    if square == self.last_move.from_square or square == self.last_move.to_square:
-                        color = LAST_MOVE
-
-                # Highlight selected square
-                if square == self.selected_square:
-                    color = SELECTED
-
-                # Highlight king in check
-                if display_board.is_check():
-                    king_square = display_board.king(display_board.turn)
-                    if square == king_square:
-                        color = CHECK_COLOR
-
-                pygame.draw.rect(self.screen, color, (x, y, SQUARE_SIZE, SQUARE_SIZE))
-
-                # Draw piece
-                piece = display_board.piece_at(square)
-                if piece:
-                    piece_char = piece.symbol()
-                    piece_unicode = PIECE_UNICODE[piece_char]
-
-                    if piece.color == chess.WHITE:
-                        outline_surface = self.piece_font.render(piece_unicode, True, (50, 50, 50))
-                        text_rect = outline_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
-                        for dx, dy in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]:
-                            self.screen.blit(outline_surface, (text_rect.x + dx, text_rect.y + dy))
-                        text_surface = self.piece_font.render(piece_unicode, True, (255, 255, 255))
-                        self.screen.blit(text_surface, text_rect)
-                    else:
-                        text_surface = self.piece_font.render(piece_unicode, True, (30, 30, 30))
-                        text_rect = text_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
-                        self.screen.blit(text_surface, text_rect)
-
-        # Draw legal move indicators
-        for move in self.legal_moves_for_selected:
-            dest_square = move.to_square
-            pos = self.get_pos_from_square(dest_square)
-            center_x = pos[0] + SQUARE_SIZE // 2
-            center_y = pos[1] + SQUARE_SIZE // 2
-
-            if self.board.board.piece_at(dest_square):
-                pygame.draw.circle(self.screen, (60, 60, 60), (center_x, center_y), SQUARE_SIZE // 2 - 4, 5)
-            else:
-                pygame.draw.circle(self.screen, (80, 80, 80), (center_x, center_y), SQUARE_SIZE // 6)
-
-        # Draw coordinates
-        coord_font = pygame.font.SysFont('Arial', 14, bold=True)
-        for i in range(8):
-            if self.flipped:
-                file_label = chr(ord('h') - i)
-            else:
-                file_label = chr(ord('a') + i)
-
-            square_is_light = (7 + i) % 2 == 0
-            coord_color = DARK_SQUARE if square_is_light else LIGHT_SQUARE
-            text = coord_font.render(file_label, True, coord_color)
-            self.screen.blit(text, (i * SQUARE_SIZE + SQUARE_SIZE - 13, BOARD_SIZE - 16))
-
-            if self.flipped:
-                rank_label = str(i + 1)
-            else:
-                rank_label = str(8 - i)
-
-            square_is_light = i % 2 == 0
-            coord_color = DARK_SQUARE if square_is_light else LIGHT_SQUARE
-            text = coord_font.render(rank_label, True, coord_color)
-            self.screen.blit(text, (5, i * SQUARE_SIZE + 5))
+        # Use the board renderer to draw everything
+        self.board_renderer.draw_board(
+            screen=self.screen,
+            board=display_board,
+            x=0,
+            y=0,
+            flipped=self.flipped,
+            last_move=self.last_move,
+            selected_square=self.selected_square,
+            legal_moves=self.legal_moves_for_selected,
+            draw_coordinates=True
+        )
 
     def draw_panel(self):
         # Panel background
