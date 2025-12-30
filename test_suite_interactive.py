@@ -49,6 +49,132 @@ FONT_TITLE = pygame.font.SysFont('Arial', 24, bold=True)
 FONT_LARGE = pygame.font.SysFont('Arial', 32, bold=True)
 
 
+class TextInput:
+    def __init__(self, x, y, width, default_value="1.0", input_type="float"):
+        self.rect = pygame.Rect(x, y, width, 40)
+        self.text = default_value
+        self.active = False
+        self.cursor_visible = True
+        self.cursor_timer = 0
+        self.input_type = input_type
+
+    def get_value(self):
+        try:
+            if self.input_type == "int":
+                val = int(self.text)
+                return max(1, min(99, val))
+            else:
+                val = float(self.text)
+                return max(0.1, min(60.0, val))
+        except ValueError:
+            return 99 if self.input_type == "int" else 1.0
+
+    def draw(self, screen):
+        border_color = (100, 150, 255) if self.active else (150, 150, 150)
+        pygame.draw.rect(screen, WHITE, self.rect)
+        pygame.draw.rect(screen, border_color, self.rect, 2)
+
+        text_surface = FONT.render(self.text, True, BLACK)
+        screen.blit(text_surface, (self.rect.x + 10, self.rect.y + 10))
+
+        if self.active and self.cursor_visible:
+            cursor_x = self.rect.x + 10 + FONT.size(self.text)[0]
+            pygame.draw.line(screen, BLACK,
+                           (cursor_x, self.rect.y + 8),
+                           (cursor_x, self.rect.y + 32), 2)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            self.active = self.rect.collidepoint(event.pos)
+        elif event.type == pygame.KEYDOWN and self.active:
+            if event.key == pygame.K_BACKSPACE:
+                self.text = self.text[:-1]
+            elif event.key == pygame.K_RETURN:
+                self.active = False
+            elif event.unicode.isdigit() or (event.unicode == '.' and self.input_type == "float"):
+                self.text += event.unicode
+
+
+class CategoryCheckbox:
+    def __init__(self, name, tests, y_pos):
+        self.name = name
+        self.tests = tests
+        self.y = y_pos
+        self.selected = False
+        self.expanded = False
+        self.test_checkboxes = {test.id: False for test in tests}
+        self.rect = pygame.Rect(50, y_pos, 20, 20)
+        self.expand_rect = pygame.Rect(950, y_pos, 20, 20)
+
+    def get_selected_tests(self):
+        return [t for t in self.tests if self.test_checkboxes[t.id]]
+
+    def draw(self, screen):
+        # Category checkbox
+        pygame.draw.rect(screen, WHITE, self.rect)
+        pygame.draw.rect(screen, BLACK, self.rect, 2)
+        if self.selected or any(self.test_checkboxes.values()):
+            pygame.draw.line(screen, BLACK, (self.rect.x + 3, self.rect.y + 10),
+                           (self.rect.x + 8, self.rect.y + 15), 3)
+            pygame.draw.line(screen, BLACK, (self.rect.x + 8, self.rect.y + 15),
+                           (self.rect.x + 17, self.rect.y + 5), 3)
+
+        # Category name
+        name_text = FONT.render(f"{self.name} ({len(self.tests)} tests)", True, TEXT_COLOR)
+        screen.blit(name_text, (self.rect.x + 30, self.rect.y))
+
+        # Expand button
+        arrow = "v" if not self.expanded else "^"
+        arrow_text = FONT_SMALL.render(arrow, True, TEXT_COLOR)
+        screen.blit(arrow_text, (self.expand_rect.x, self.expand_rect.y))
+
+        # Draw individual tests if expanded
+        if self.expanded:
+            for i, test in enumerate(self.tests[:5]):  # Show max 5
+                test_y = self.y + 30 + i * 25
+                test_rect = pygame.Rect(70, test_y, 15, 15)
+                pygame.draw.rect(screen, WHITE, test_rect)
+                pygame.draw.rect(screen, BLACK, test_rect, 1)
+
+                if self.test_checkboxes[test.id]:
+                    pygame.draw.line(screen, BLACK, (test_rect.x + 2, test_rect.y + 7),
+                                   (test_rect.x + 6, test_rect.y + 11), 2)
+                    pygame.draw.line(screen, BLACK, (test_rect.x + 6, test_rect.y + 11),
+                                   (test_rect.x + 13, test_rect.y + 3), 2)
+
+                test_name = FONT_SMALL.render(test.name[:40], True, TEXT_COLOR)
+                screen.blit(test_name, (test_rect.x + 20, test_rect.y))
+
+            if len(self.tests) > 5:
+                more_text = FONT_TINY.render(f"... and {len(self.tests) - 5} more", True, (100, 100, 100))
+                screen.blit(more_text, (70, self.y + 30 + 5 * 25))
+
+    def handle_event(self, event, mouse_pos):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            # Category checkbox
+            if self.rect.collidepoint(mouse_pos):
+                self.selected = not self.selected
+                # Toggle all tests
+                for test_id in self.test_checkboxes:
+                    self.test_checkboxes[test_id] = self.selected
+                return True
+
+            # Expand button
+            if self.expand_rect.collidepoint(mouse_pos):
+                self.expanded = not self.expanded
+                return True
+
+            # Individual test checkboxes
+            if self.expanded:
+                for i, test in enumerate(self.tests[:5]):
+                    test_y = self.y + 30 + i * 25
+                    test_rect = pygame.Rect(70, test_y, 15, 15)
+                    if test_rect.collidepoint(mouse_pos):
+                        self.test_checkboxes[test.id] = not self.test_checkboxes[test.id]
+                        return True
+        return False
+
+
 class InteractiveTestSuite:
     def __init__(self):
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
