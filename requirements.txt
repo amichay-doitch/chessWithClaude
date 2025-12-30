@@ -1,3 +1,4 @@
 python-chess>=1.999
 pygame>=2.5.0
 pyyaml>=6.0
+stockfish==4.0.3

@@ -1,548 +1,241 @@
 test_positions:
-  # ============================================================================
-  # TACTICAL POSITIONS (10)
-  # ============================================================================
-
-  - id: tactical_001
-    name: "Greek Gift Sacrifice"
-    category: tactical
-    difficulty: medium
-    fen: "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4"
-    best_moves:
-      - c4f7
-    avoid_moves:
-      - b1c3
-      - d2d3
-    description: "Classic bishop sacrifice on f7"
-    points: 10
-
-  - id: tactical_002
-    name: "Pin - Win Material"
-    category: tactical
-    difficulty: easy
-    fen: "r1bqk2r/ppp2ppp/2n5/2bpp3/4P3/2P2N2/PP1P1PPP/RNBQKB1R w KQkq - 0 6"
-    best_moves:
-      - f3e5
-    avoid_moves:
-      - d2d4
-      - f1e2
-    description: "Knight takes pawn, bishop is pinned"
-    points: 5
-
-  - id: tactical_003
-    name: "Fork - Knight Fork"
-    category: tactical
-    difficulty: easy
-    fen: "r1bqkbnr/pppp1ppp/2n5/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b KQkq d3 0 3"
-    best_moves:
-      - c6d4
-    avoid_moves:
-      - g8f6
-      - f8c5
-    description: "Nd4 forks queen and knight"
-    points: 8
-
-  - id: tactical_004
-    name: "Discovered Attack"
-    category: tactical
-    difficulty: medium
-    fen: "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 8"
-    best_moves:
-      - c3d5
-    avoid_moves:
-      - a2a3
-      - h2h3
-    description: "Nd5 discovers attack on bishop"
-    points: 10
-
-  - id: tactical_005
-    name: "Skewer"
-    category: tactical
-    difficulty: medium
-    fen: "r2qk2r/ppp2ppp/2n5/2bpp3/1bB1P3/2NP4/PPP2PPP/R1BQ1RK1 w kq - 0 9"
-    best_moves:
-      - c4f7
-    avoid_moves:
-      - c3d5
-      - d3d4
-    description: "Bxf7+ skewers king and rook"
-    points: 12
-
-  - id: tactical_006
-    name: "Removing Defender"
-    category: tactical
-    difficulty: hard
-    fen: "r1bqkb1r/pp3ppp/2nppn2/8/2BNP3/2N5/PPP2PPP/R1BQK2R w KQkq - 0 8"
-    best_moves:
-      - d4f5
-    avoid_moves:
-      - e4d5
-      - c3d5
-    description: "Nxf5 removes defender of d6"
-    points: 15
-
-  - id: tactical_007
-    name: "Deflection"
-    category: tactical
-    difficulty: medium
-    fen: "r1bq1rk1/ppp2ppp/3p1n2/3Pp3/1bP5/2N2N2/PP3PPP/R1BQKB1R w KQ - 0 9"
-    best_moves:
-      - c4b5
-    avoid_moves:
-      - f3e5
-      - c3d5
-    description: "cxb5 deflects bishop from defense"
-    points: 10
-
-  - id: tactical_008
-    name: "Desperado"
-    category: tactical
-    difficulty: hard
-    fen: "r1bqr1k1/ppp2ppp/2n5/3pP3/3P2b1/2PB4/PP3PPP/RNBQR1K1 b - - 0 10"
-    best_moves:
-      - g4d1
-      - g4f3
-    avoid_moves:
-      - c6e5
-      - g4h3
-    description: "Bishop captures before being taken"
-    points: 12
-
-  - id: tactical_009
-    name: "Zwischenzug"
-    category: tactical
-    difficulty: hard
-    fen: "r2qkb1r/pppb1ppp/2np1n2/4p3/2B1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 7"
-    best_moves:
-      - c4f7
-    avoid_moves:
-      - c3d5
-      - f3e5
-    description: "In-between move before recapture"
-    points: 15
-
-  - id: tactical_010
-    name: "Overloaded Piece"
-    category: tactical
-    difficulty: medium
-    fen: "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 6"
-    best_moves:
-      - c4f7
-    avoid_moves:
-      - e1g1
-      - d3d4
-    description: "King must deal with check, loses castling"
-    points: 10
-
-  # ============================================================================
-  # CHECKMATE POSITIONS (10)
-  # ============================================================================
-
-  - id: checkmate_001
-    name: "Back Rank Mate"
-    category: checkmate
-    difficulty: easy
-    fen: "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1"
-    best_moves:
-      - d1d8
-    avoid_moves:
-      - g1h1
-      - f2f4
-    description: "Rd8# is back rank checkmate"
-    points: 5
-
-  - id: checkmate_002
-    name: "Smothered Mate"
-    category: checkmate
-    difficulty: medium
-    fen: "6rk/6pp/7N/8/8/8/8/6K1 w - - 0 1"
-    best_moves:
-      - h6f7
-    avoid_moves:
-      - g1f1
-      - h6g4
-    description: "Nf7# is smothered mate"
-    points: 8
-
-  - id: checkmate_003
-    name: "Queen and Rook Mate"
-    category: checkmate
-    difficulty: easy
-    fen: "6k1/5ppp/8/8/8/8/4QPPP/5RK1 w - - 0 1"
-    best_moves:
-      - e2e8
-      - f1f8
-    avoid_moves:
-      - e2a6
-      - e2b5
-    description: "Mate with queen and rook"
-    points: 5
-
-  - id: checkmate_004
-    name: "Anastasia's Mate"
-    category: checkmate
-    difficulty: medium
-    fen: "2kr3r/ppp2p1p/3p4/8/8/8/PPP2PPP/1N1RR1K1 w - - 0 1"
-    best_moves:
-      - d1d8
-    avoid_moves:
-      - e1e8
-      - b1d2
-    description: "Rd8# with knight support"
-    points: 10
-
-  - id: checkmate_005
-    name: "Arabian Mate"
-    category: checkmate
-    difficulty: easy
-    fen: "5rk1/6pp/8/8/8/8/6PP/5RNK w - - 0 1"
-    best_moves:
-      - f1f8
-    avoid_moves:
-      - g1e2
-      - g1f3
-    description: "Rf8# with knight controlling escape"
-    points: 6
-
-  - id: checkmate_006
-    name: "Epaulette Mate"
-    category: checkmate
-    difficulty: medium
-    fen: "3rkr2/8/8/8/8/8/8/3QK3 w - - 0 1"
-    best_moves:
-      - d1d8
-    avoid_moves:
-      - d1a4
-      - e1d2
-    description: "Qd8# - king blocked by own rooks"
-    points: 8
-
-  - id: checkmate_007
-    name: "Mate in 2 - Sacrifice"
-    category: checkmate
-    difficulty: hard
-    fen: "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4"
-    best_moves:
-      - c4f7
-    avoid_moves:
-      - e1g1
-      - d2d3
-    description: "Bxf7+ followed by Ng5+ wins"
-    points: 12
-
-  - id: checkmate_008
-    name: "Mate in 2 - Queen Sac"
-    category: checkmate
-    difficulty: hard
-    fen: "r3k2r/ppp2ppp/2n5/2b5/4q3/2N5/PPP2PPP/R1BQR1K1 w kq - 0 10"
-    best_moves:
-      - e1e4
-    avoid_moves:
-      - c3e4
-      - d1d8
-    description: "Rxe4 leads to forced mate"
-    points: 15
-
-  - id: checkmate_009
-    name: "Philidor's Legacy"
-    category: checkmate
-    difficulty: hard
-    fen: "2kr4/ppp5/8/8/8/8/6PP/3NR1K1 w - - 0 1"
-    best_moves:
-      - e1e8
-    avoid_moves:
-      - d1f2
-      - d1b2
-    description: "Re8+ forces king move, then Nd7#"
-    points: 15
-
-  - id: checkmate_010
-    name: "Boden's Mate"
-    category: checkmate
-    difficulty: medium
-    fen: "2kr4/pp3ppp/8/2b5/8/8/PPP2PPP/R1b1K2R w KQ - 0 10"
-    best_moves:
-      - e1c1
-    avoid_moves:
-      - e1d2
-      - a1c1
-    description: "Kxc1 allows bishops to mate"
-    points: 10
-
-  # ============================================================================
-  # ENDGAME POSITIONS (10)
-  # ============================================================================
-
-  - id: endgame_001
-    name: "King and Pawn - Opposition"
-    category: endgame
-    difficulty: medium
-    fen: "8/8/4k3/8/8/3K4/4P3/8 w - - 0 1"
-    best_moves:
-      - d3e4
-      - d3d4
-    avoid_moves:
-      - e2e4
-      - e2e3
-    description: "King must lead pawn to promotion"
-    points: 10
-
-  - id: endgame_002
-    name: "Queen vs King"
-    category: endgame
-    difficulty: easy
-    fen: "8/8/8/3k4/8/3K4/3Q4/8 w - - 0 1"
-    best_moves:
-      - d2d1
-      - d2e2
-      - d2e3
-    avoid_moves:
-      - d2h2
-      - d2a2
-    description: "Force king to edge with queen"
-    points: 5
-
-  - id: endgame_003
-    name: "Rook Endgame - Lucena"
-    category: endgame
-    difficulty: hard
-    fen: "3K4/3P1k2/8/8/8/8/5r2/4R3 w - - 0 1"
-    best_moves:
-      - e1e4
-    avoid_moves:
-      - e1f1
-      - d8c7
-    description: "Building a bridge technique"
-    points: 15
-
-  - id: endgame_004
-    name: "Rook Endgame - Philidor"
-    category: endgame
-    difficulty: hard
-    fen: "8/8/1k6/1p6/1P6/8/3r4/2RK4 b - - 0 1"
-    best_moves:
-      - d2d6
-    avoid_moves:
-      - b6c7
-      - d2a2
-    description: "Rd6 cuts off king"
-    points: 12
-
-  - id: endgame_005
-    name: "Pawn Endgame - Square Rule"
-    category: endgame
-    difficulty: medium
-    fen: "8/5k2/3p4/1p1Pp2p/pP2Pp1P/P4P1K/8/8 b - - 99 50"
-    best_moves:
-      - f7e7
-      - f7f6
-      - f7g6
-    avoid_moves:
-      - h5h4
-    description: "King activity crucial"
-    points: 10
-
-  - id: endgame_006
-    name: "Bishop and Pawn vs King"
-    category: endgame
-    difficulty: medium
-    fen: "8/8/8/3k4/8/3BK3/3P4/8 w - - 0 1"
-    best_moves:
-      - d3e4
-      - e3e4
-      - d3f5
-    avoid_moves:
-      - d2d4
-    description: "Bishop and pawn coordination"
-    points: 8
-
-  - id: endgame_007
-    name: "Rook vs Pawn - Drawn"
-    category: endgame
-    difficulty: medium
-    fen: "8/8/8/5k2/5p2/5K2/8/7R b - - 0 1"
-    best_moves:
-      - f5e5
-      - f5g5
-    avoid_moves:
-      - f4f3
-    description: "Keep king active, draw rook endgame"
-    points: 8
-
-  - id: endgame_008
-    name: "Queen vs Rook"
-    category: endgame
-    difficulty: hard
-    fen: "8/8/8/4k3/8/3K4/4Q3/5r2 w - - 0 1"
-    best_moves:
-      - e2e1
-      - e2a2
-    avoid_moves:
-      - e2e3
-    description: "Coordinate queen and king"
-    points: 12
-
-  - id: endgame_009
-    name: "Opposite Bishops"
-    category: endgame
-    difficulty: hard
-    fen: "8/5k2/8/3bPK2/8/8/6B1/8 w - - 0 1"
-    best_moves:
-      - g2f3
-      - g2h3
-    avoid_moves:
-      - e5e6
-    description: "Opposite bishops often draw"
-    points: 10
-
-  - id: endgame_010
-    name: "Rook and Pawn on 7th"
-    category: endgame
-    difficulty: medium
-    fen: "6k1/5pR1/8/8/8/8/5K2/8 w - - 0 1"
-    best_moves:
-      - g7g8
-      - g7a7
-    avoid_moves:
-      - f2e3
-      - f2g3
-    description: "Rook on 7th dominates"
-    points: 8
-
-  # ============================================================================
-  # POSITIONAL POSITIONS (10)
-  # ============================================================================
-
-  - id: positional_001
-    name: "Control the Center"
-    category: positional
-    difficulty: easy
-    fen: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
-    best_moves:
-      - e7e5
-      - c7c5
-    avoid_moves:
-      - a7a6
-      - h7h6
-    description: "Fight for central control"
-    points: 5
-
-  - id: positional_002
-    name: "Complete Development - Castle"
-    category: positional
-    difficulty: easy
-    fen: "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQ1RK1 b kq - 0 6"
-    best_moves:
-      - e8g8
-    avoid_moves:
-      - d7d6
-      - h7h6
-    description: "Castle to complete development"
-    points: 5
-
-  - id: positional_003
-    name: "Weak Square Exploitation"
-    category: positional
-    difficulty: medium
-    fen: "r1bqkb1r/ppp2ppp/2np1n2/3Pp3/2B5/2N2N2/PPP2PPP/R1BQK2R w KQkq - 0 7"
-    best_moves:
-      - c3e4
-      - f3e5
-    avoid_moves:
-      - e1g1
-      - a2a3
-    description: "Occupy weakened d5 or e5 square"
-    points: 10
-
-  - id: positional_004
-    name: "Doubled Pawns Problem"
-    category: positional
-    difficulty: medium
-    fen: "rnbqkb1r/pppp1ppp/4pn2/8/3PP3/2N5/PPP2PPP/R1BQKBNR b KQkq - 0 4"
-    best_moves:
-      - f6e4
-    avoid_moves:
-      - f8c5
-      - b8c6
-    description: "Exchange knight to avoid doubled pawns"
-    points: 8
-
-  - id: positional_005
-    name: "Open File for Rook"
-    category: positional
-    difficulty: medium
-    fen: "r1bqk2r/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 7"
-    best_moves:
-      - e1g1
-      - d3d4
-    avoid_moves:
-      - a2a3
-      - h2h3
-    description: "Control the center and open lines"
-    points: 8
-
-  - id: positional_006
-    name: "Knight Outpost"
-    category: positional
-    difficulty: medium
-    fen: "r1bqk2r/ppp2ppp/2np1n2/4p3/1bB1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 7"
-    best_moves:
-      - c3d5
-    avoid_moves:
-      - c4d5
-      - e1g1
-    description: "Create strong knight outpost on d5"
-    points: 10
-
-  - id: positional_007
-    name: "Bishop Pair Advantage"
-    category: positional
-    difficulty: hard
-    fen: "rnbqk2r/pppp1ppp/4pn2/8/1bBP4/2N2N2/PPP2PPP/R1BQK2R b KQkq - 0 5"
-    best_moves:
-      - b4c3
-    avoid_moves:
-      - e8g8
-      - b8c6
-    description: "Exchange to avoid bishop pair disadvantage"
-    points: 12
-
-  - id: positional_008
-    name: "Pawn Structure - Isolani"
-    category: positional
-    difficulty: hard
-    fen: "rnbqkb1r/ppp2ppp/4pn2/3p4/2PP4/2N2N2/PP3PPP/R1BQKB1R b KQkq - 0 5"
-    best_moves:
-      - d5c4
-      - f8e7
-    avoid_moves:
-      - d5d4
-    description: "Deal with isolated d-pawn"
-    points: 10
-
-  - id: positional_009
-    name: "King Safety - Don't Move Pawns"
-    category: positional
-    difficulty: medium
-    fen: "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 8"
-    best_moves:
-      - c3d5
-      - a2a3
-    avoid_moves:
-      - h2h3
-      - g2g4
-    description: "Don't weaken kingside pawns"
-    points: 8
-
-  - id: positional_010
-    name: "Space Advantage"
-    category: positional
-    difficulty: hard
-    fen: "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 4 5"
-    best_moves:
-      - d2d4
-    avoid_moves:
-      - e1g1
-      - d2d3
-    description: "Grab central space with d4"
-    points: 10
+- id: tactical_001
+  name: Greek Gift Sacrifice
+  category: tactical
+  difficulty: medium
+  fen: r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4
+  description: Classic bishop sacrifice on f7
+- id: tactical_002
+  name: Pin - Win Material
+  category: tactical
+  difficulty: easy
+  fen: r1bqk2r/ppp2ppp/2n5/2bpp3/4P3/2P2N2/PP1P1PPP/RNBQKB1R w KQkq - 0 6
+  description: Knight takes pawn, bishop is pinned
+- id: tactical_003
+  name: Fork - Knight Fork
+  category: tactical
+  difficulty: easy
+  fen: r1bqkbnr/pppp1ppp/2n5/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b KQkq d3 0 3
+  description: Nd4 forks queen and knight
+- id: tactical_004
+  name: Discovered Attack
+  category: tactical
+  difficulty: medium
+  fen: r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 8
+  description: Nd5 discovers attack on bishop
+- id: tactical_005
+  name: Skewer
+  category: tactical
+  difficulty: medium
+  fen: r2qk2r/ppp2ppp/2n5/2bpp3/1bB1P3/2NP4/PPP2PPP/R1BQ1RK1 w kq - 0 9
+  description: Bxf7+ skewers king and rook
+- id: tactical_006
+  name: Removing Defender
+  category: tactical
+  difficulty: hard
+  fen: r1bqkb1r/pp3ppp/2nppn2/8/2BNP3/2N5/PPP2PPP/R1BQK2R w KQkq - 0 8
+  description: Nxf5 removes defender of d6
+- id: tactical_007
+  name: Deflection
+  category: tactical
+  difficulty: medium
+  fen: r1bq1rk1/ppp2ppp/3p1n2/3Pp3/1bP5/2N2N2/PP3PPP/R1BQKB1R w KQ - 0 9
+  description: cxb5 deflects bishop from defense
+- id: tactical_008
+  name: Desperado
+  category: tactical
+  difficulty: hard
+  fen: r1bqr1k1/ppp2ppp/2n5/3pP3/3P2b1/2PB4/PP3PPP/RNBQR1K1 b - - 0 10
+  description: Bishop captures before being taken
+- id: tactical_009
+  name: Zwischenzug
+  category: tactical
+  difficulty: hard
+  fen: r2qkb1r/pppb1ppp/2np1n2/4p3/2B1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 7
+  description: In-between move before recapture
+- id: tactical_010
+  name: Overloaded Piece
+  category: tactical
+  difficulty: medium
+  fen: r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 6
+  description: King must deal with check, loses castling
+- id: checkmate_001
+  name: Back Rank Mate
+  category: checkmate
+  difficulty: easy
+  fen: 6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1
+  description: Rd8# is back rank checkmate
+- id: checkmate_002
+  name: Smothered Mate
+  category: checkmate
+  difficulty: medium
+  fen: 6rk/6pp/7N/8/8/8/8/6K1 w - - 0 1
+  description: Nf7# is smothered mate
+- id: checkmate_003
+  name: Queen and Rook Mate
+  category: checkmate
+  difficulty: easy
+  fen: 6k1/5ppp/8/8/8/8/4QPPP/5RK1 w - - 0 1
+  description: Mate with queen and rook
+- id: checkmate_004
+  name: Anastasia's Mate
+  category: checkmate
+  difficulty: medium
+  fen: 2kr3r/ppp2p1p/3p4/8/8/8/PPP2PPP/1N1RR1K1 w - - 0 1
+  description: Rd8# with knight support
+- id: checkmate_005
+  name: Arabian Mate
+  category: checkmate
+  difficulty: easy
+  fen: 5rk1/6pp/8/8/8/8/6PP/5RNK w - - 0 1
+  description: Rf8# with knight controlling escape
+- id: checkmate_006
+  name: Epaulette Mate
+  category: checkmate
+  difficulty: medium
+  fen: 3rkr2/8/8/8/8/8/8/3QK3 w - - 0 1
+  description: Qd8# - king blocked by own rooks
+- id: checkmate_007
+  name: Mate in 2 - Sacrifice
+  category: checkmate
+  difficulty: hard
+  fen: r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4
+  description: Bxf7+ followed by Ng5+ wins
+- id: checkmate_008
+  name: Mate in 2 - Queen Sac
+  category: checkmate
+  difficulty: hard
+  fen: r3k2r/ppp2ppp/2n5/2b5/4q3/2N5/PPP2PPP/R1BQR1K1 w kq - 0 10
+  description: Rxe4 leads to forced mate
+- id: checkmate_009
+  name: Philidor's Legacy
+  category: checkmate
+  difficulty: hard
+  fen: 2kr4/ppp5/8/8/8/8/6PP/3NR1K1 w - - 0 1
+  description: Re8+ forces king move, then Nd7#
+- id: checkmate_010
+  name: Boden's Mate
+  category: checkmate
+  difficulty: medium
+  fen: 2kr4/pp3ppp/8/2b5/8/8/PPP2PPP/R1b1K2R w KQ - 0 10
+  description: Kxc1 allows bishops to mate
+- id: endgame_001
+  name: King and Pawn - Opposition
+  category: endgame
+  difficulty: medium
+  fen: 8/8/4k3/8/8/3K4/4P3/8 w - - 0 1
+  description: King must lead pawn to promotion
+- id: endgame_002
+  name: Queen vs King
+  category: endgame
+  difficulty: easy
+  fen: 8/8/8/3k4/8/3K4/3Q4/8 w - - 0 1
+  description: Force king to edge with queen
+- id: endgame_003
+  name: Rook Endgame - Lucena
+  category: endgame
+  difficulty: hard
+  fen: 3K4/3P1k2/8/8/8/8/5r2/4R3 w - - 0 1
+  description: Building a bridge technique
+- id: endgame_004
+  name: Rook Endgame - Philidor
+  category: endgame
+  difficulty: hard
+  fen: 8/8/1k6/1p6/1P6/8/3r4/2RK4 b - - 0 1
+  description: Rd6 cuts off king
+- id: endgame_005
+  name: Pawn Endgame - Square Rule
+  category: endgame
+  difficulty: medium
+  fen: 8/5k2/3p4/1p1Pp2p/pP2Pp1P/P4P1K/8/8 b - - 99 50
+  description: King activity crucial
+- id: endgame_006
+  name: Bishop and Pawn vs King
+  category: endgame
+  difficulty: medium
+  fen: 8/8/8/3k4/8/3BK3/3P4/8 w - - 0 1
+  description: Bishop and pawn coordination
+- id: endgame_007
+  name: Rook vs Pawn - Drawn
+  category: endgame
+  difficulty: medium
+  fen: 8/8/8/5k2/5p2/5K2/8/7R b - - 0 1
+  description: Keep king active, draw rook endgame
+- id: endgame_008
+  name: Queen vs Rook
+  category: endgame
+  difficulty: hard
+  fen: 8/8/8/4k3/8/3K4/4Q3/5r2 w - - 0 1
+  description: Coordinate queen and king
+- id: endgame_009
+  name: Opposite Bishops
+  category: endgame
+  difficulty: hard
+  fen: 8/5k2/8/3bPK2/8/8/6B1/8 w - - 0 1
+  description: Opposite bishops often draw
+- id: endgame_010
+  name: Rook and Pawn on 7th
+  category: endgame
+  difficulty: medium
+  fen: 6k1/5pR1/8/8/8/8/5K2/8 w - - 0 1
+  description: Rook on 7th dominates
+- id: positional_001
+  name: Control the Center
+  category: positional
+  difficulty: easy
+  fen: rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
+  description: Fight for central control
+- id: positional_002
+  name: Complete Development - Castle
+  category: positional
+  difficulty: easy
+  fen: r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQ1RK1 b kq - 0 6
+  description: Castle to complete development
+- id: positional_003
+  name: Weak Square Exploitation
+  category: positional
+  difficulty: medium
+  fen: r1bqkb1r/ppp2ppp/2np1n2/3Pp3/2B5/2N2N2/PPP2PPP/R1BQK2R w KQkq - 0 7
+  description: Occupy weakened d5 or e5 square
+- id: positional_004
+  name: Doubled Pawns Problem
+  category: positional
+  difficulty: medium
+  fen: rnbqkb1r/pppp1ppp/4pn2/8/3PP3/2N5/PPP2PPP/R1BQKBNR b KQkq - 0 4
+  description: Exchange knight to avoid doubled pawns
+- id: positional_005
+  name: Open File for Rook
+  category: positional
+  difficulty: medium
+  fen: r1bqk2r/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 7
+  description: Control the center and open lines
+- id: positional_006
+  name: Knight Outpost
+  category: positional
+  difficulty: medium
+  fen: r1bqk2r/ppp2ppp/2np1n2/4p3/1bB1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 7
+  description: Create strong knight outpost on d5
+- id: positional_007
+  name: Bishop Pair Advantage
+  category: positional
+  difficulty: hard
+  fen: rnbqk2r/pppp1ppp/4pn2/8/1bBP4/2N2N2/PPP2PPP/R1BQK2R b KQkq - 0 5
+  description: Exchange to avoid bishop pair disadvantage
+- id: positional_008
+  name: Pawn Structure - Isolani
+  category: positional
+  difficulty: hard
+  fen: rnbqkb1r/ppp2ppp/4pn2/3p4/2PP4/2N2N2/PP3PPP/R1BQKB1R b KQkq - 0 5
+  description: Deal with isolated d-pawn
+- id: positional_009
+  name: King Safety - Don't Move Pawns
+  category: positional
+  difficulty: medium
+  fen: r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 8
+  description: Don't weaken kingside pawns
+- id: positional_010
+  name: Space Advantage
+  category: positional
+  difficulty: hard
+  fen: r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 4 5
+  description: Grab central space with d4

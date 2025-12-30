@@ -11,7 +11,15 @@
       "Bash(git checkout:*)",
       "Bash(dir /O-D /B gamesengine_v5_vs_engine_fast)",
       "Bash(pkill:*)",
-      "Bash(taskkill /F /FI \"WINDOWTITLE eq python*tournament*\")"
+      "Bash(taskkill /F /FI \"WINDOWTITLE eq python*tournament*\")",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(done)",
+      "Bash(dir:*)",
+      "Bash(tasklist:*)",
+      "Bash(tee:*)",
+      "Bash(\"C:/Users/AmichayDeutsch/miniconda3/envs/chessWithClaude/python.exe\" test_suite_interactive.py)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

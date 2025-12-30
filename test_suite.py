@@ -1,6 +1,6 @@
 """
 Chess Engine Test Suite
-Evaluates engines on tactical, positional, and endgame positions.
+Evaluates engines on tactical, positional, and endgame positions using Stockfish as reference.
 """
 
 import chess
@@ -9,9 +9,11 @@ import json
 import argparse
 import importlib
 import time
+import os
 from typing import List, Dict, Any
 from dataclasses import dataclass
 from collections import defaultdict
+from stockfish_analyzer import StockfishAnalyzer
 
 
 @dataclass
@@ -22,17 +24,20 @@ class TestPosition:
     category: str
     difficulty: str
     fen: str
-    best_moves: List[str]
-    avoid_moves: List[str]
     description: str
-    points: int
 
 
 class TestSuite:
     """Test suite for chess engines."""
 
-    def __init__(self, yaml_file: str = "test_positions.yaml"):
+    def __init__(self, yaml_file: str = "test_positions.yaml", stockfish_path: str = None):
         self.yaml_file = yaml_file
+        # Auto-detect stockfish in script directory
+        if stockfish_path is None:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            self.stockfish_path = os.path.join(script_dir, "stockfish-windows-x86-64-avx2.exe")
+        else:
+            self.stockfish_path = stockfish_path
         self.positions = self.load_positions()
 
     def load_positions(self) -> List[TestPosition]:
@@ -49,10 +54,7 @@ class TestSuite:
                     category=pos_data['category'],
                     difficulty=pos_data['difficulty'],
                     fen=pos_data['fen'],
-                    best_moves=pos_data['best_moves'],
-                    avoid_moves=pos_data.get('avoid_moves', []),
-                    description=pos_data['description'],
-                    points=pos_data['points']
+                    description=pos_data['description']
                 ))
 
             print(f"Loaded {len(positions)} test positions from {self.yaml_file}")
@@ -67,25 +69,28 @@ class TestSuite:
         engine_module_name: str,
         depth: int = 6,
         time_limit: float = 2.0,
-        verbose: bool = True
+        verbose: bool = True,
+        stockfish_depth: int = 20
     ) -> Dict[str, Any]:
         """
-        Test an engine on all positions.
+        Test an engine on all positions using Stockfish as reference.
 
         Args:
             engine_module_name: Name of engine module (e.g., 'engine_v5')
-            depth: Search depth
+            depth: Search depth for engine being tested
             time_limit: Time limit per position
             verbose: Print detailed output
+            stockfish_depth: Depth for Stockfish analysis (default: 20)
 
         Returns:
             Dictionary with test results
         """
         if verbose:
             print(f"\n{'='*70}")
-            print(f"Testing {engine_module_name}")
+            print(f"Testing {engine_module_name} (Stockfish-evaluated)")
             print(f"{'='*70}")
-            print(f"Depth: {depth} | Time Limit: {time_limit}s | Positions: {len(self.positions)}")
+            print(f"Engine Depth: {depth} | Time Limit: {time_limit}s")
+            print(f"Stockfish Depth: {stockfish_depth} | Positions: {len(self.positions)}")
             print(f"{'='*70}")
 
         # Import engine
@@ -100,187 +105,285 @@ class TestSuite:
             'engine': engine_module_name,
             'depth': depth,
             'time_limit': time_limit,
-            'total_score': 0,
-            'max_score': 0,
-            'category_scores': defaultdict(lambda: {'score': 0, 'max': 0, 'passed': 0, 'failed': 0}),
+            'stockfish_depth': stockfish_depth,
+            'category_scores': defaultdict(lambda: {'scores': [], 'excellent': 0, 'ok': 0, 'poor': 0, 'terrible': 0}),
             'position_results': [],
             'test_date': time.strftime('%Y-%m-%d %H:%M:%S')
         }
 
-        for i, pos in enumerate(self.positions, 1):
-            board = chess.Board(pos.fen)
-            engine = engine_class(max_depth=depth, time_limit=time_limit)
+        # Initialize Stockfish
+        with StockfishAnalyzer(self.stockfish_path, depth=stockfish_depth) as stockfish:
 
-            if verbose:
-                print(f"\n[{i}/{len(self.positions)}] {pos.id}: {pos.name}")
-                print(f"  Category: {pos.category} | Difficulty: {pos.difficulty} | Points: {pos.points}")
+            for i, pos in enumerate(self.positions, 1):
+                board = chess.Board(pos.fen)
 
-            # Search for best move
-            start_time = time.time()
-            try:
-                result = engine.search(board)
-                move = result.best_move
-                search_time = time.time() - start_time
+                if verbose:
+                    print(f"\n[{i}/{len(self.positions)}] {pos.id}: {pos.name}")
+                    print(f"  Category: {pos.category} | Difficulty: {pos.difficulty}")
 
-                move_uci = move.uci() if move else "none"
-
-                # Convert move to SAN for display
+                # Search for best move
+                start_time = time.time()
                 try:
-                    move_san = board.san(move) if move else "none"
-                except:
-                    move_san = move_uci
+                    # 1. Get Stockfish's top 3 moves and eval
+                    sf_analysis = stockfish.analyze(board, top_n=3, verbose=True)
+                    eval_before = sf_analysis.evaluation
 
-                # Check if move is good
-                is_correct = move_uci in pos.best_moves
-                is_bad = move_uci in pos.avoid_moves
+                    # 2. Run engine being tested
+                    engine = engine_class(max_depth=depth, time_limit=time_limit)
+                    result = engine.search(board)
+                    engine_move = result.best_move
+                    search_time = time.time() - start_time
 
-                if is_correct:
-                    score = pos.points
-                    status = "PASS"
-                    symbol = "✓"
-                elif is_bad:
-                    score = 0
-                    status = "FAIL"
-                    symbol = "✗"
-                else:
-                    score = pos.points // 2  # Partial credit
-                    status = "PARTIAL"
-                    symbol = "~"
+                    if not engine_move:
+                        raise ValueError("Engine returned no move")
 
-                if verbose:
-                    # Convert expected moves to SAN
-                    expected_san = []
-                    for best_uci in pos.best_moves:
-                        try:
-                            best_move = chess.Move.from_uci(best_uci)
-                            expected_san.append(board.san(best_move))
-                        except:
-                            expected_san.append(best_uci)
+                    # 3. Check if engine move is in top 3
+                    move_rank = None
+                    for move_analysis in sf_analysis.top_moves:
+                        if engine_move == move_analysis.move:
+                            move_rank = move_analysis.rank
+                            break
 
-                    print(f"  Expected: {', '.join(expected_san)}")
-                    print(f"  Engine:   {move_san} ({move_uci}) {symbol} {status}")
-                    print(f"  Score:    {score}/{pos.points}")
-                    print(f"  Time:     {search_time:.2f}s | Nodes: {result.nodes_searched:,} | Eval: {result.score}")
+                    # 4. Calculate dynamic score based on move rank
+                    if move_rank == 1:
+                        # Found #1 move - perfect!
+                        score_pct = 0.0
+                        eval_after = None  # Don't need to calculate
+                    elif move_rank == 2:
+                        # Second best move - still very good
+                        score_pct = 0.10  # 10% penalty
+                        eval_after = None
+                    elif move_rank == 3:
+                        # Third best - acceptable
+                        score_pct = 0.15  # 15% penalty
+                        eval_after = None
+                    else:
+                        # Not in top 3 - use evaluation-based scoring
+                        board_after = board.copy()
+                        board_after.push(engine_move)
+                        sf_after = stockfish.analyze(board_after)
+                        eval_after = sf_after.evaluation
 
-                # Update results
-                results['total_score'] += score
-                results['max_score'] += pos.points
+                        if abs(eval_before) < 0.01:  # Avoid division by zero for equal positions
+                            score_pct = 0.0 if abs(eval_after) < 0.01 else -100.0
+                        else:
+                            score_pct = (eval_after / eval_before) - 1
 
-                # Category scores
-                cat = pos.category
-                results['category_scores'][cat]['score'] += score
-                results['category_scores'][cat]['max'] += pos.points
-                if is_correct:
-                    results['category_scores'][cat]['passed'] += 1
-                else:
-                    results['category_scores'][cat]['failed'] += 1
+                    # 5. Determine status
+                    abs_score = abs(score_pct)
+                    if abs_score <= 0.20:
+                        status = "EXCELLENT"
+                        symbol = "[OK]"
+                        status_key = 'excellent'
+                    elif abs_score <= 0.50:
+                        status = "OK"
+                        symbol = "~"
+                        status_key = 'ok'
+                    elif abs_score <= 1.00:
+                        status = "POOR"
+                        symbol = "[X]"
+                        status_key = 'poor'
+                    else:
+                        status = "TERRIBLE"
+                        symbol = "[XX]"
+                        status_key = 'terrible'
 
-                # Position result
-                results['position_results'].append({
-                    'id': pos.id,
-                    'name': pos.name,
-                    'category': pos.category,
-                    'difficulty': pos.difficulty,
-                    'fen': pos.fen,
-                    'expected_moves': pos.best_moves,
-                    'engine_move': move_uci,
-                    'engine_move_san': move_san,
-                    'correct': is_correct,
-                    'status': status,
-                    'score': score,
-                    'max': pos.points,
-                    'time': search_time,
-                    'nodes': result.nodes_searched,
-                    'eval': result.score,
-                    'depth_reached': result.depth
-                })
+                    # 6. Display results
+                    if verbose:
+                        engine_move_san = board.san(engine_move)
 
-            except Exception as e:
-                if verbose:
-                    print(f"  ERROR: {e}")
-                results['position_results'].append({
-                    'id': pos.id,
-                    'name': pos.name,
-                    'category': pos.category,
-                    'error': str(e),
-                    'score': 0,
-                    'max': pos.points
-                })
-                results['max_score'] += pos.points
-                results['category_scores'][pos.category]['max'] += pos.points
-                results['category_scores'][pos.category]['failed'] += 1
+                        print(f"  Stockfish Top 3:")
+                        for ma in sf_analysis.top_moves[:3]:
+                            marker = " <- ENGINE" if engine_move == ma.move else ""
+                            if ma.centipawn is not None:
+                                eval_str = f"{ma.centipawn/100:+.2f}"
+                            elif ma.mate is not None:
+                                eval_str = f"M{ma.mate}"
+                            else:
+                                eval_str = "0.00"
+                            print(f"    {ma.rank}. {board.san(ma.move)} ({eval_str}){marker}")
+
+                        print(f"  Engine:    {engine_move_san} (rank: {move_rank or 'not in top 3'})")
+                        if eval_after is not None:
+                            print(f"             eval after move: {eval_after:+.2f}")
+                        print(f"  Score:     {score_pct:+.1%} {symbol} {status}")
+                        print(f"  Time:      {search_time:.2f}s | Nodes: {result.nodes_searched:,}")
+
+                        if sf_analysis.verbose_stats:
+                            print(f"  SF Stats:  {sf_analysis.verbose_stats.nodes:,} nodes @ {sf_analysis.verbose_stats.nps:,} nps")
+
+                    # 7. Store results
+                    cat = pos.category
+                    results['category_scores'][cat]['scores'].append(score_pct)
+                    results['category_scores'][cat][status_key] += 1
+
+                    results['position_results'].append({
+                        'id': pos.id,
+                        'name': pos.name,
+                        'category': pos.category,
+                        'difficulty': pos.difficulty,
+                        'fen': pos.fen,
+                        'description': pos.description,
+
+                        # Stockfish data
+                        'stockfish_move': sf_analysis.best_move.uci(),
+                        'stockfish_move_san': board.san(sf_analysis.best_move),
+                        'stockfish_eval': eval_before,
+
+                        # NEW: Top moves
+                        'stockfish_top_moves': [
+                            {
+                                'rank': ma.rank,
+                                'move_uci': ma.move_uci,
+                                'move_san': board.san(ma.move),
+                                'centipawn': ma.centipawn,
+                                'mate': ma.mate
+                            }
+                            for ma in sf_analysis.top_moves
+                        ] if sf_analysis.top_moves else None,
+
+                        # Engine data
+                        'engine_move': engine_move.uci(),
+                        'engine_move_san': board.san(engine_move),
+                        'engine_move_rank': move_rank,  # NEW: 1, 2, 3, or None
+                        'engine_eval': eval_after,
+
+                        # Scoring
+                        'score_pct': score_pct,
+                        'status': status,
+
+                        # Performance stats
+                        'time': search_time,
+                        'nodes': result.nodes_searched,
+                        'engine_internal_eval': result.score,
+                        'depth_reached': result.depth,
+
+                        # NEW: Verbose stats
+                        'stockfish_nodes': sf_analysis.verbose_stats.nodes if sf_analysis.verbose_stats else None,
+                        'stockfish_nps': sf_analysis.verbose_stats.nps if sf_analysis.verbose_stats else None,
+                    })
+
+                except Exception as e:
+                    if verbose:
+                        print(f"  ERROR: {e}")
+
+                    results['position_results'].append({
+                        'id': pos.id,
+                        'name': pos.name,
+                        'category': pos.category,
+                        'difficulty': pos.difficulty,
+                        'error': str(e),
+                        'score_pct': -999.0,  # Mark as failed
+                        'status': 'ERROR'
+                    })
+                    results['category_scores'][pos.category]['terrible'] += 1
 
         return results
 
 
 def print_summary(results: Dict[str, Any]):
-    """Print test results summary."""
+    """Print test results summary with Stockfish-based dynamic scoring."""
     if not results:
         return
 
     print(f"\n{'='*70}")
-    print(f"{results['engine']} - TEST SUMMARY")
+    print(f"{results['engine']} - TEST SUMMARY (Stockfish-evaluated)")
     print(f"{'='*70}")
 
-    total_pct = (results['total_score'] / results['max_score'] * 100) if results['max_score'] > 0 else 0
-    print(f"\nOverall Score: {results['total_score']}/{results['max_score']} ({total_pct:.1f}%)")
+    # Calculate overall statistics
+    all_scores = []
+    for cat_data in results['category_scores'].values():
+        all_scores.extend(cat_data['scores'])
+
+    if all_scores:
+        avg_score = sum(all_scores) / len(all_scores)
+        print(f"\nOverall Average Score: {avg_score:+.1%}")
+        print(f"Total Positions: {len(all_scores)}")
+    else:
+        print(f"\nNo positions tested")
 
     print(f"\nCategory Breakdown:")
     print(f"{'-'*70}")
     for category, scores in sorted(results['category_scores'].items()):
-        cat_pct = (scores['score'] / scores['max'] * 100) if scores['max'] > 0 else 0
-        status_icon = "+" if cat_pct >= 70 else "~" if cat_pct >= 50 else "X"
-        status_text = "GOOD" if cat_pct >= 70 else "OK" if cat_pct >= 50 else "WEAK"
+        if not scores['scores']:
+            continue
 
-        print(f"  {status_icon} {category.capitalize():15s}: {scores['score']:3d}/{scores['max']:3d} ({cat_pct:5.1f}%) - {status_text}")
-        print(f"    Passed: {scores['passed']}, Failed: {scores['failed']}")
+        avg = sum(scores['scores']) / len(scores['scores'])
+        total = len(scores['scores'])
+        excellent = scores['excellent']
+        ok = scores['ok']
+        poor = scores['poor']
+        terrible = scores['terrible']
+
+        # Determine status
+        if excellent / total >= 0.7:
+            status_icon = "[OK]"
+            status_text = "STRONG"
+        elif (excellent + ok) / total >= 0.5:
+            status_icon = "~"
+            status_text = "DECENT"
+        else:
+            status_icon = "[X]"
+            status_text = "WEAK"
+
+        print(f"  {status_icon} {category.capitalize():15s}: Avg: {avg:+.1%}")
+        print(f"      [OK]{excellent} Excellent  ~{ok} OK  [X]{poor} Poor  [XX]{terrible} Terrible")
 
     print(f"\n{'='*70}")
     print(f"Recommendations:")
     print(f"{'-'*70}")
 
     weak_categories = []
-    for cat, scores in results['category_scores'].items():
-        pct = (scores['score'] / scores['max'] * 100) if scores['max'] > 0 else 0
-        if pct < 60:
-            weak_categories.append((cat, pct))
+    for cat, cat_data in results['category_scores'].items():
+        if not cat_data['scores']:
+            continue
+        avg = sum(cat_data['scores']) / len(cat_data['scores'])
+        total = len(cat_data['scores'])
+        poor_rate = (cat_data['poor'] + cat_data['terrible']) / total
+        if poor_rate >= 0.5:  # More than half are poor/terrible
+            weak_categories.append((cat, avg, poor_rate))
 
     if weak_categories:
-        for cat, pct in sorted(weak_categories, key=lambda x: x[1]):
+        for cat, avg, poor_rate in sorted(weak_categories, key=lambda x: x[1]):
+            print(f"  * {cat.capitalize()}: {poor_rate:.0%} positions are poor/terrible (avg: {avg:+.1%})")
             if cat == 'tactical':
-                print(f"  * Improve tactical vision - only {pct:.0f}% on {cat} positions")
                 print(f"    > Consider: deeper search, better move ordering, tactical pruning")
             elif cat == 'checkmate':
-                print(f"  * Strengthen checkmate detection - only {pct:.0f}% on {cat} positions")
                 print(f"    > Consider: check extensions, mate threat evaluation")
             elif cat == 'endgame':
-                print(f"  * Enhance endgame play - only {pct:.0f}% on {cat} positions")
                 print(f"    > Consider: king activity, pawn advancement, opposition")
             elif cat == 'positional':
-                print(f"  * Improve positional understanding - only {pct:.0f}% on {cat} positions")
                 print(f"    > Consider: piece mobility, pawn structure, weak squares")
     else:
-        print(f"  + Strong performance across all categories!")
+        print(f"  ✓ Strong performance across all categories!")
         print(f"  > Continue refining search speed and depth")
 
     print(f"{'='*70}\n")
 
 
 def compare_engines(results_list: List[Dict[str, Any]]):
-    """Compare multiple engine results."""
+    """Compare multiple engine results with Stockfish-based scoring."""
     if len(results_list) < 2:
         return
 
     print(f"\n{'='*70}")
-    print(f"ENGINE COMPARISON")
+    print(f"ENGINE COMPARISON (Stockfish-evaluated)")
     print(f"{'='*70}")
 
+    # Calculate overall averages for sorting
+    engine_averages = []
+    for r in results_list:
+        all_scores = []
+        for cat_data in r['category_scores'].values():
+            all_scores.extend(cat_data['scores'])
+        avg = sum(all_scores) / len(all_scores) if all_scores else -999
+        engine_averages.append((r['engine'], avg, len(all_scores)))
+
     # Overall comparison
-    print(f"\nOverall Scores:")
+    print(f"\nOverall Performance:")
     print(f"{'-'*70}")
-    for r in sorted(results_list, key=lambda x: x['total_score'], reverse=True):
-        pct = (r['total_score'] / r['max_score'] * 100) if r['max_score'] > 0 else 0
-        print(f"  {r['engine']:25s}: {r['total_score']:3d}/{r['max_score']:3d} ({pct:5.1f}%)")
+    for engine, avg, total in sorted(engine_averages, key=lambda x: x[1], reverse=True):
+        print(f"  {engine:25s}: {avg:+.1%} (avg across {total} positions)")
 
     # Category comparison
     all_categories = set()
@@ -291,11 +394,21 @@ def compare_engines(results_list: List[Dict[str, Any]]):
     print(f"{'-'*70}")
     for cat in sorted(all_categories):
         print(f"\n  {cat.capitalize()}:")
+        cat_results = []
         for r in results_list:
             if cat in r['category_scores']:
-                scores = r['category_scores'][cat]
-                pct = (scores['score'] / scores['max'] * 100) if scores['max'] > 0 else 0
-                print(f"    {r['engine']:25s}: {scores['score']:3d}/{scores['max']:3d} ({pct:5.1f}%) | Pass: {scores['passed']}, Fail: {scores['failed']}")
+                cat_data = r['category_scores'][cat]
+                if cat_data['scores']:
+                    avg = sum(cat_data['scores']) / len(cat_data['scores'])
+                    total = len(cat_data['scores'])
+                    excellent = cat_data['excellent']
+                    ok = cat_data['ok']
+                    poor = cat_data['poor']
+                    terrible = cat_data['terrible']
+                    cat_results.append((r['engine'], avg, excellent, ok, poor, terrible, total))
+
+        for engine, avg, exc, ok, pr, terr, total in sorted(cat_results, key=lambda x: x[1], reverse=True):
+            print(f"    {engine:25s}: {avg:+.1%} | ✓{exc} ~{ok} ✗{pr} ✗✗{terr}")
 
     print(f"\n{'='*70}\n")
 

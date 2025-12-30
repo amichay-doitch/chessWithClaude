@@ -1,6 +1,7 @@
 """
 Interactive Chess Engine Test Suite
 Visual GUI for testing engines on selected positions with step-by-step move comparison.
+Uses Stockfish for dynamic scoring.
 """
 
 import pygame
@@ -14,6 +15,7 @@ import time
 from typing import List, Dict
 from collections import defaultdict
 from test_suite import TestSuite, TestPosition
+from stockfish_analyzer import StockfishAnalyzer
 
 # Initialize pygame
 pygame.init()
@@ -468,47 +470,108 @@ class InteractiveTestSuite:
         board = chess.Board(position.fen)
 
         try:
-            engine_module = importlib.import_module(self.selected_engine)
-            engine = engine_module.ChessEngine(max_depth=self.max_depth, time_limit=self.time_limit)
+            # Initialize Stockfish for this position (auto-detects stockfish-windows-x86-64-avx2.exe)
+            with StockfishAnalyzer(depth=20) as stockfish:
+                # 1. Get Stockfish's top 3 moves and eval
+                sf_analysis = stockfish.analyze(board, top_n=3, verbose=True)
+                eval_before = sf_analysis.evaluation
+                stockfish_move_uci = sf_analysis.best_move.uci()
+                stockfish_move_san = board.san(sf_analysis.best_move)
 
-            result = engine.search(board)
-            move_uci = result.best_move.uci() if result.best_move else "none"
+                # 2. Run engine being tested
+                engine_module = importlib.import_module(self.selected_engine)
+                engine = engine_module.ChessEngine(max_depth=self.max_depth, time_limit=self.time_limit)
 
-            # Convert to SAN
-            try:
-                move_san = board.san(result.best_move) if result.best_move else "none"
-            except:
-                move_san = move_uci
+                result = engine.search(board)
+                engine_move = result.best_move
 
-            # Score
-            if move_uci in position.best_moves:
-                score = position.points
-                status = "PASS"
-            elif move_uci in position.avoid_moves:
-                score = 0
-                status = "FAIL"
-            else:
-                score = position.points // 2
-                status = "PARTIAL"
+                if not engine_move:
+                    raise ValueError("Engine returned no move")
 
-            self.current_result = {
-                'position': position,
-                'engine_move': move_uci,
-                'engine_move_san': move_san,
-                'status': status,
-                'score': score,
-                'max': position.points,
-                'time': result.time_spent,
-                'nodes': result.nodes_searched,
-                'depth_reached': result.depth,
-                'max_depth': self.max_depth
-            }
+                engine_move_uci = engine_move.uci()
+                engine_move_san = board.san(engine_move)
+
+                # 3. Check if engine move is in top 3
+                move_rank = None
+                for move_analysis in sf_analysis.top_moves:
+                    if engine_move == move_analysis.move:
+                        move_rank = move_analysis.rank
+                        break
+
+                # 4. Calculate dynamic score based on move rank
+                if move_rank == 1:
+                    # Found #1 move - perfect!
+                    score_pct = 0.0
+                    eval_after = None
+                elif move_rank == 2:
+                    # Second best move - still very good
+                    score_pct = 0.10  # 10% penalty
+                    eval_after = None
+                elif move_rank == 3:
+                    # Third best - acceptable
+                    score_pct = 0.15  # 15% penalty
+                    eval_after = None
+                else:
+                    # Not in top 3 - use evaluation-based scoring
+                    board_after = board.copy()
+                    board_after.push(engine_move)
+                    sf_after = stockfish.analyze(board_after)
+                    eval_after = sf_after.evaluation
+
+                    if abs(eval_before) < 0.01:
+                        score_pct = 0.0 if abs(eval_after) < 0.01 else -100.0
+                    else:
+                        score_pct = (eval_after / eval_before) - 1
+
+                # 5. Determine status
+                abs_score = abs(score_pct)
+                if abs_score <= 0.20:
+                    status = "EXCELLENT"
+                elif abs_score <= 0.50:
+                    status = "OK"
+                elif abs_score <= 1.00:
+                    status = "POOR"
+                else:
+                    status = "TERRIBLE"
+
+                self.current_result = {
+                    'position': position,
+                    'stockfish_move': stockfish_move_uci,
+                    'stockfish_move_san': stockfish_move_san,
+                    'stockfish_eval': eval_before,
+
+                    # NEW: Top moves
+                    'stockfish_top_moves': [
+                        {
+                            'rank': ma.rank,
+                            'move_uci': ma.move_uci,
+                            'move_san': board.san(ma.move),
+                            'centipawn': ma.centipawn,
+                            'mate': ma.mate
+                        }
+                        for ma in sf_analysis.top_moves
+                    ] if sf_analysis.top_moves else None,
+
+                    'engine_move': engine_move_uci,
+                    'engine_move_san': engine_move_san,
+                    'engine_move_rank': move_rank,  # NEW
+                    'engine_eval': eval_after,
+                    'score_pct': score_pct,
+                    'status': status,
+                    'time': result.time_spent,
+                    'nodes': result.nodes_searched,
+                    'depth_reached': result.depth,
+                    'max_depth': self.max_depth,
+
+                    # NEW: Verbose stats
+                    'stockfish_nodes': sf_analysis.verbose_stats.nodes if sf_analysis.verbose_stats else None,
+                    'stockfish_nps': sf_analysis.verbose_stats.nps if sf_analysis.verbose_stats else None,
+                }
         except Exception as e:
             self.current_result = {
                 'position': position,
                 'error': str(e),
-                'score': 0,
-                'max': position.points,
+                'score_pct': -999.0,
                 'status': 'ERROR'
             }
 
@@ -598,20 +661,19 @@ class InteractiveTestSuite:
                 engine_move = chess.Move.from_uci(self.current_result['engine_move'])
                 status = self.current_result['status']
 
-                if status == 'PASS':
+                if status == 'EXCELLENT':
                     engine_color = HIGHLIGHT_CORRECT
-                elif status == 'FAIL':
+                elif status in ['POOR', 'TERRIBLE']:
                     engine_color = HIGHLIGHT_WRONG
-                else:
+                else:  # OK
                     engine_color = HIGHLIGHT_PARTIAL
 
                 self.highlight_move(engine_move, engine_color, flipped)
 
                 if self.display_state == "both_moves":
-                    position = self.selected_tests[self.current_test_index]
-                    expected_move = chess.Move.from_uci(position.best_moves[0])
-                    if engine_move != expected_move:
-                        self.highlight_move(expected_move, HIGHLIGHT_EXPECTED, flipped)
+                    stockfish_move = chess.Move.from_uci(self.current_result['stockfish_move'])
+                    if engine_move != stockfish_move:
+                        self.highlight_move(stockfish_move, HIGHLIGHT_EXPECTED, flipped)
             except:
                 pass
 
@@ -706,12 +768,9 @@ class InteractiveTestSuite:
             self.screen.blit(name, (panel_x + 20, y))
             y += 30
 
-            # Category and points
+            # Category
             cat = FONT_SMALL.render(f"Category: {position.category.capitalize()}", True, TEXT_COLOR)
-            pts = FONT_SMALL.render(f"Points: {position.points}", True, TEXT_COLOR)
             self.screen.blit(cat, (panel_x + 20, y))
-            y += 22
-            self.screen.blit(pts, (panel_x + 20, y))
             y += 40
 
             # Results
@@ -720,52 +779,67 @@ class InteractiveTestSuite:
                     error = FONT_SMALL.render(f"Error: {self.current_result['error']}", True, (200, 0, 0))
                     self.screen.blit(error, (panel_x + 20, y))
                 else:
+                    # Stockfish best
+                    sf_label = FONT_SMALL.render("Stockfish Best:", True, (100, 100, 100))
+                    self.screen.blit(sf_label, (panel_x + 20, y))
+                    y += 20
+
+                    sf_move = FONT.render(f"{self.current_result['stockfish_move_san']} ({self.current_result['stockfish_eval']:+.2f})", True, (100, 150, 255))
+                    self.screen.blit(sf_move, (panel_x + 30, y))
+                    y += 30
+
                     # Engine move
-                    eng_label = FONT_SMALL.render("Engine:", True, (100, 100, 100))
+                    eng_label = FONT_SMALL.render("Engine Move:", True, (100, 100, 100))
                     self.screen.blit(eng_label, (panel_x + 20, y))
                     y += 20
 
                     status = self.current_result['status']
-                    status_colors = {'PASS': (46, 125, 50), 'FAIL': (183, 28, 28), 'PARTIAL': (245, 127, 23)}
+                    status_colors = {
+                        'EXCELLENT': (46, 125, 50),
+                        'OK': (245, 127, 23),
+                        'POOR': (183, 28, 28),
+                        'TERRIBLE': (139, 0, 0),
+                        'ERROR': (200, 0, 0)
+                    }
                     color = status_colors.get(status, TEXT_COLOR)
-                    symbols = {'PASS': '+', 'FAIL': 'X', 'PARTIAL': '~'}
+                    symbols = {'EXCELLENT': '✓', 'OK': '~', 'POOR': '✗', 'TERRIBLE': '✗✗', 'ERROR': '!'}
                     symbol = symbols.get(status, '?')
 
-                    eng_move = FONT.render(f"{self.current_result['engine_move_san']} ({symbol} {status})", True, color)
+                    # Display engine move with eval or rank
+                    engine_eval = self.current_result.get('engine_eval')
+                    move_rank = self.current_result.get('engine_move_rank')
+
+                    if move_rank is not None and move_rank <= 3:
+                        # In top 3, show rank instead of eval
+                        eng_move_text = f"{self.current_result['engine_move_san']} (Rank #{move_rank})"
+                    elif engine_eval is not None:
+                        # Not in top 3, show eval after move
+                        eng_move_text = f"{self.current_result['engine_move_san']} ({engine_eval:+.2f})"
+                    else:
+                        # Fallback
+                        eng_move_text = f"{self.current_result['engine_move_san']}"
+
+                    eng_move = FONT.render(eng_move_text, True, color)
                     self.screen.blit(eng_move, (panel_x + 30, y))
                     y += 30
 
-                    # Expected
-                    if self.display_state == "both_moves":
-                        exp_label = FONT_SMALL.render("Expected:", True, (100, 100, 100))
-                        self.screen.blit(exp_label, (panel_x + 20, y))
-                        y += 20
+                    # Score
+                    score_pct = self.current_result.get('score_pct', 0)
+                    score_text = FONT.render(f"Score: {score_pct:+.1%} {symbol} {status}", True, color)
+                    self.screen.blit(score_text, (panel_x + 20, y))
+                    y += 30
 
-                        try:
-                            board = chess.Board(position.fen)
-                            exp_move = chess.Move.from_uci(position.best_moves[0])
-                            exp_san = board.san(exp_move)
-                        except:
-                            exp_san = position.best_moves[0]
-
-                        exp_text = FONT.render(exp_san, True, (100, 150, 255))
-                        self.screen.blit(exp_text, (panel_x + 30, y))
-                        y += 30
-
-                    # Score and depth
-                    score = FONT.render(f"Score: {self.current_result['score']}/{self.current_result['max']}", True, TEXT_COLOR)
-                    self.screen.blit(score, (panel_x + 20, y))
-                    y += 25
-
+                    # Depth
                     depth = FONT_SMALL.render(f"Depth: {self.current_result['depth_reached']} (max: {self.current_result['max_depth']})", True, TEXT_COLOR)
                     self.screen.blit(depth, (panel_x + 20, y))
                     y += 22
 
+                    # Time and nodes
                     time_nodes = FONT_SMALL.render(f"Time: {self.current_result['time']:.2f}s  Nodes: {self.current_result['nodes']:,}", True, TEXT_COLOR)
                     self.screen.blit(time_nodes, (panel_x + 20, y))
                     y += 40
             else:
-                calc = FONT.render("Calculating...", True, (100, 100, 100))
+                calc = FONT.render("Analyzing with Stockfish...", True, (100, 100, 100))
                 self.screen.blit(calc, (panel_x + 20, y))
                 y += 40
 
@@ -787,10 +861,16 @@ class InteractiveTestSuite:
     def draw_summary_screen(self):
         self.screen.fill(PANEL_BG)
 
-        # Calculate stats
-        total_score = sum(r['score'] for r in self.results)
-        max_score = sum(r['max'] for r in self.results)
-        pct = (total_score / max_score * 100) if max_score > 0 else 0
+        # Calculate stats - filter out errors and compute average
+        valid_results = [r for r in self.results if 'error' not in r]
+        error_count = len(self.results) - len(valid_results)
+
+        if valid_results:
+            avg_score_pct = sum(abs(r['score_pct']) for r in valid_results) / len(valid_results)
+            # Convert to 0-100 scale (lower is better, capped at 100%)
+            pct = max(0, 100 - (avg_score_pct * 100))
+        else:
+            pct = 0.0
 
         # Title
         title = FONT_LARGE.render("Test Suite Results", True, TEXT_COLOR)
@@ -798,20 +878,54 @@ class InteractiveTestSuite:
         self.screen.blit(title, title_rect)
 
         # Total score
-        score_text = FONT_TITLE.render(f"{total_score}/{max_score} ({pct:.1f}%)", True, TEXT_COLOR)
+        from collections import defaultdict
+        status_counts = defaultdict(int)
+        for r in self.results:
+            status_counts[r['status']] += 1
+
+        score_text = FONT_TITLE.render(f"Overall Score: {pct:.1f}%", True, TEXT_COLOR)
         score_rect = score_text.get_rect(center=(WINDOW_WIDTH // 2, 120))
         self.screen.blit(score_text, score_rect)
 
+        # Show test counts by status
+        counts_text = FONT.render(
+            f"Excellent: {status_counts['EXCELLENT']}  OK: {status_counts['OK']}  "
+            f"Poor: {status_counts['POOR']}  Terrible: {status_counts['TERRIBLE']}  "
+            f"Errors: {status_counts['ERROR']}",
+            True, (100, 100, 100)
+        )
+        counts_rect = counts_text.get_rect(center=(WINDOW_WIDTH // 2, 155))
+        self.screen.blit(counts_text, counts_rect)
+
         # Category breakdown
-        category_stats = defaultdict(lambda: {'score': 0, 'max': 0, 'passed': 0, 'failed': 0})
+        category_stats = defaultdict(lambda: {
+            'valid_scores': [],
+            'excellent': 0,
+            'ok': 0,
+            'poor': 0,
+            'terrible': 0,
+            'error': 0
+        })
+
         for result in self.results:
             cat = result['position'].category
-            category_stats[cat]['score'] += result['score']
-            category_stats[cat]['max'] += result['max']
-            if result['status'] == 'PASS':
-                category_stats[cat]['passed'] += 1
-            else:
-                category_stats[cat]['failed'] += 1
+            status = result['status']
+
+            # Track status counts
+            if status == 'EXCELLENT':
+                category_stats[cat]['excellent'] += 1
+            elif status == 'OK':
+                category_stats[cat]['ok'] += 1
+            elif status == 'POOR':
+                category_stats[cat]['poor'] += 1
+            elif status == 'TERRIBLE':
+                category_stats[cat]['terrible'] += 1
+            elif status == 'ERROR':
+                category_stats[cat]['error'] += 1
+
+            # Collect valid scores for average
+            if 'error' not in result:
+                category_stats[cat]['valid_scores'].append(abs(result['score_pct']))
 
         y = 200
         label = FONT.render("Category Breakdown:", True, TEXT_COLOR)
@@ -819,14 +933,32 @@ class InteractiveTestSuite:
         y += 40
 
         for cat, stats in sorted(category_stats.items()):
-            cat_pct = (stats['score'] / stats['max'] * 100) if stats['max'] > 0 else 0
-            icon = "+" if cat_pct >= 70 else "~" if cat_pct >= 50 else "X"
+            # Calculate category percentage
+            if stats['valid_scores']:
+                avg_score = sum(stats['valid_scores']) / len(stats['valid_scores'])
+                cat_pct = max(0, 100 - (avg_score * 100))
+            else:
+                cat_pct = 0.0
 
-            cat_line = FONT.render(f"{icon} {cat.capitalize()}: {stats['score']}/{stats['max']} ({cat_pct:.0f}%)", True, TEXT_COLOR)
+            total_tests = (stats['excellent'] + stats['ok'] + stats['poor'] +
+                          stats['terrible'] + stats['error'])
+            good_tests = stats['excellent'] + stats['ok']
+
+            icon = "✓" if cat_pct >= 70 else "~" if cat_pct >= 50 else "✗"
+
+            cat_line = FONT.render(
+                f"{icon} {cat.capitalize()}: {cat_pct:.1f}% ({good_tests}/{total_tests} good)",
+                True, TEXT_COLOR
+            )
             self.screen.blit(cat_line, (220, y))
             y += 25
 
-            detail = FONT_SMALL.render(f"Passed: {stats['passed']}, Failed: {stats['failed']}", True, (100, 100, 100))
+            detail = FONT_SMALL.render(
+                f"Excellent: {stats['excellent']}, OK: {stats['ok']}, "
+                f"Poor: {stats['poor']}, Terrible: {stats['terrible']}, "
+                f"Errors: {stats['error']}",
+                True, (100, 100, 100)
+            )
             self.screen.blit(detail, (240, y))
             y += 35
 
@@ -846,13 +978,18 @@ class InteractiveTestSuite:
                         'test_id': r['position'].id,
                         'test_name': r['position'].name,
                         'category': r['position'].category,
-                        'score': r['score'],
-                        'max': r['max'],
+                        'score_pct': r['score_pct'],
                         'status': r['status'],
                         'engine_move': r.get('engine_move', 'none'),
+                        'engine_move_san': r.get('engine_move_san', 'none'),
+                        'stockfish_move': r.get('stockfish_move', 'none'),
+                        'stockfish_move_san': r.get('stockfish_move_san', 'none'),
+                        'stockfish_eval': r.get('stockfish_eval', 0.0),
+                        'engine_eval': r.get('engine_eval', 0.0),
                         'time': r.get('time', 0),
                         'nodes': r.get('nodes', 0),
-                        'depth': r.get('depth_reached', 0)
+                        'depth': r.get('depth_reached', 0),
+                        'error': r.get('error', None)
                     } for r in self.results
                 ]
             }, f, indent=2)
