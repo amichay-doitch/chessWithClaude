@@ -8,7 +8,7 @@ from stockfish_analyzer import StockfishAnalyzer
 
 # Auto-detect stockfish in script directory
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-STOCKFISH_PATH = os.path.join(SCRIPT_DIR, "stockfish-windows-x86-64-avx2.exe")
+STOCKFISH_PATH = os.path.join(SCRIPT_DIR, "data/stockfish-windows-x86-64-avx2.exe")
 
 def test_basic_analysis():
     """Test basic analysis (backward compatible)."""

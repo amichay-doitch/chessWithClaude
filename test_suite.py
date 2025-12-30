@@ -35,7 +35,7 @@ class TestSuite:
         # Auto-detect stockfish in script directory
         if stockfish_path is None:
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            self.stockfish_path = os.path.join(script_dir, "stockfish-windows-x86-64-avx2.exe")
+            self.stockfish_path = os.path.join(script_dir, "data/stockfish-windows-x86-64-avx2.exe")
         else:
             self.stockfish_path = stockfish_path
         self.positions = self.load_positions()

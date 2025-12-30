@@ -137,6 +137,6 @@ logs/
 .claude
 
 # Chess engine executables
-stockfish-windows-x86-64-avx2.exe
+data/stockfish-windows-x86-64-avx2.exe
 stockfish-windows-*
 *.exe
