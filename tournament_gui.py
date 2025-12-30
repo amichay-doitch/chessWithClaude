@@ -11,20 +11,17 @@ import time
 import importlib
 from typing import Optional, Dict, Any, Tuple
 from game_recorder import GameRecorder
+from gui_utils import (
+    Button, ChessBoardRenderer,
+    WHITE, BLACK, LIGHT_SQUARE, DARK_SQUARE,
+    BUTTON_COLOR, BUTTON_HOVER, TEXT_COLOR, PIECE_UNICODE
+)
 
-
-# Colors
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-LIGHT_SQUARE = (240, 217, 181)
-DARK_SQUARE = (181, 136, 99)
+# Tournament-specific colors
 HIGHLIGHT = (186, 202, 68)
 BG_COLOR = (240, 240, 245)
 PANEL_BG = (250, 250, 252)
-BUTTON_COLOR = (70, 130, 180)
-BUTTON_HOVER = (100, 160, 210)
 BUTTON_DISABLED = (180, 180, 180)
-TEXT_COLOR = (40, 40, 50)
 GREEN = (76, 175, 80)
 RED = (244, 67, 54)
 ORANGE = (255, 152, 0)
@@ -35,42 +32,6 @@ PANEL_WIDTH = 460
 SCREEN_WIDTH = BOARD_SIZE + PANEL_WIDTH
 SCREEN_HEIGHT = 720
 SQUARE_SIZE = BOARD_SIZE // 8
-
-
-class Button:
-    """Simple button class for GUI."""
-
-    def __init__(self, x: int, y: int, width: int, height: int, text: str, color: Tuple[int, int, int]):
-        self.rect = pygame.Rect(x, y, width, height)
-        self.text = text
-        self.color = color
-        self.hover_color = tuple(min(c + 30, 255) for c in color)
-        self.disabled_color = BUTTON_DISABLED
-        self.enabled = True
-        self.hovered = False
-
-    def draw(self, screen, font):
-        """Draw the button."""
-        color = self.disabled_color if not self.enabled else (self.hover_color if self.hovered else self.color)
-        pygame.draw.rect(screen, color, self.rect, border_radius=5)
-        pygame.draw.rect(screen, (200, 200, 200), self.rect, 2, border_radius=5)
-
-        text_surf = font.render(self.text, True, WHITE)
-        text_rect = text_surf.get_rect(center=self.rect.center)
-        screen.blit(text_surf, text_rect)
-
-    def handle_event(self, event) -> bool:
-        """Handle mouse events."""
-        if not self.enabled:
-            return False
-
-        if event.type == pygame.MOUSEMOTION:
-            self.hovered = self.rect.collidepoint(event.pos)
-
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.rect.collidepoint(event.pos):
-                return True
-        return False
 
 
 class TournamentGUI:
@@ -132,8 +93,8 @@ class TournamentGUI:
         # Create buttons
         self.create_buttons()
 
-        # Load piece images
-        self.load_pieces()
+        # Create board renderer
+        self.board_renderer = ChessBoardRenderer(SQUARE_SIZE)
 
     def create_buttons(self):
         """Create GUI buttons."""
@@ -160,79 +121,23 @@ class TournamentGUI:
             self.speed_1x, self.speed_10x, self.speed_50x, self.speed_100x
         ]
 
-    def load_pieces(self):
-        """Load chess piece images."""
-        self.piece_font = None
-
-        # Try loading chess font files first
-        chess_font_files = ['ChessMerida.ttf', 'ChessAlpha.ttf', 'chess_merida_unicode.ttf']
-        for font_file in chess_font_files:
-            try:
-                self.piece_font = pygame.font.Font(font_file, 65)
-                print(f"Loaded chess font: {font_file}")
-                break
-            except:
-                continue
-
-        # Fall back to system fonts if no chess font found
-        if self.piece_font is None:
-            font_names = ['Segoe UI Symbol', 'Arial Unicode MS', 'DejaVu Sans', 'FreeSans']
-            for font_name in font_names:
-                try:
-                    self.piece_font = pygame.font.SysFont(font_name, 65)
-                    print(f"Loaded font: {font_name}")
-                    break
-                except:
-                    continue
-
-        if self.piece_font is None:
-            self.piece_font = pygame.font.Font(None, 65)
-
-        # Store piece unicode chars for rendering with outlines
-        self.piece_chars = {
-            'P': '\u2659', 'N': '\u2658', 'B': '\u2657',
-            'R': '\u2656', 'Q': '\u2655', 'K': '\u2654',
-            'p': '\u265F', 'n': '\u265E', 'b': '\u265D',
-            'r': '\u265C', 'q': '\u265B', 'k': '\u265A'
-        }
-
     def draw_board(self):
         """Draw the chess board."""
-        board_rect = pygame.Rect(0, (SCREEN_HEIGHT - BOARD_SIZE) // 2, BOARD_SIZE, BOARD_SIZE)
+        board_y = (SCREEN_HEIGHT - BOARD_SIZE) // 2
+
+        # Draw board border
+        board_rect = pygame.Rect(0, board_y, BOARD_SIZE, BOARD_SIZE)
         pygame.draw.rect(self.screen, (100, 100, 100), board_rect.inflate(4, 4))
 
-        for row in range(8):
-            for col in range(8):
-                x = col * SQUARE_SIZE
-                y = row * SQUARE_SIZE + (SCREEN_HEIGHT - BOARD_SIZE) // 2
-
-                # Draw square
-                color = LIGHT_SQUARE if (row + col) % 2 == 0 else DARK_SQUARE
-                pygame.draw.rect(self.screen, color, (x, y, SQUARE_SIZE, SQUARE_SIZE))
-
-                # Draw piece
-                square = chess.square(col, 7 - row)
-                piece = self.board.piece_at(square)
-
-                if piece:
-                    piece_char = piece.symbol()
-                    piece_unicode = self.piece_chars.get(piece_char)
-                    if piece_unicode:
-                        if piece.color == chess.WHITE:
-                            # White pieces: dark outline with white fill
-                            outline_surface = self.piece_font.render(piece_unicode, True, (50, 50, 50))
-                            text_rect = outline_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
-                            # Draw outline in 8 directions for thickness
-                            for dx, dy in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]:
-                                self.screen.blit(outline_surface, (text_rect.x + dx, text_rect.y + dy))
-                            # Draw white piece on top
-                            text_surface = self.piece_font.render(piece_unicode, True, (255, 255, 255))
-                            self.screen.blit(text_surface, text_rect)
-                        else:
-                            # Black pieces: solid black with antialiasing
-                            text_surface = self.piece_font.render(piece_unicode, True, (30, 30, 30))
-                            text_rect = text_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
-                            self.screen.blit(text_surface, text_rect)
+        # Use board renderer to draw board and pieces
+        self.board_renderer.draw_board(
+            screen=self.screen,
+            board=self.board,
+            x=0,
+            y=board_y,
+            flipped=False,
+            draw_coordinates=False
+        )
 
     def draw_panel(self):
         """Draw the statistics and control panel."""

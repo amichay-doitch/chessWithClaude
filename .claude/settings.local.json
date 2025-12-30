@@ -20,7 +20,9 @@
       "Bash(tee:*)",
       "Bash(\"C:/Users/AmichayDeutsch/miniconda3/envs/chessWithClaude/python.exe\" test_suite_interactive.py)",
       "Bash(git add:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
