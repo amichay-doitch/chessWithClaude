@@ -5,28 +5,22 @@ Tournament GUI with Interactive Configuration Screen
 import pygame
 import chess
 import sys
-import os
-import glob
-import importlib
 import threading
 import time
 from typing import Optional, Dict, Any, Tuple, List
 from game_recorder import GameRecorder
+from gui_utils import (
+    Button, ChessBoardRenderer, find_all_engines, format_engine_name,
+    WHITE, BLACK, LIGHT_SQUARE, DARK_SQUARE,
+    BUTTON_COLOR, BUTTON_HOVER, TEXT_COLOR, PIECE_UNICODE
+)
 
-
-# Colors
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-LIGHT_SQUARE = (240, 217, 181)
-DARK_SQUARE = (181, 136, 99)
+# Tournament config specific colors
 HIGHLIGHT = (186, 202, 68)
 BG_COLOR = (240, 240, 245)
 PANEL_BG = (250, 250, 252)
-BUTTON_COLOR = (70, 130, 180)
-BUTTON_HOVER = (100, 160, 210)
 BUTTON_DISABLED = (180, 180, 180)
 BUTTON_SELECTED = (50, 180, 100)
-TEXT_COLOR = (40, 40, 50)
 GREEN = (76, 175, 80)
 RED = (244, 67, 54)
 ORANGE = (255, 152, 0)
@@ -39,53 +33,6 @@ SCREEN_HEIGHT = 720
 SQUARE_SIZE = BOARD_SIZE // 8
 
 
-class Button:
-    """Simple button class for GUI."""
-
-    def __init__(self, x: int, y: int, width: int, height: int, text: str, color: Tuple[int, int, int]):
-        self.rect = pygame.Rect(x, y, width, height)
-        self.text = text
-        self.color = color
-        self.hover_color = tuple(min(c + 30, 255) for c in color)
-        self.disabled_color = BUTTON_DISABLED
-        self.selected_color = BUTTON_SELECTED
-        self.enabled = True
-        self.hovered = False
-        self.selected = False
-
-    def draw(self, screen, font):
-        """Draw the button."""
-        if self.selected:
-            color = self.selected_color
-        elif not self.enabled:
-            color = self.disabled_color
-        elif self.hovered:
-            color = self.hover_color
-        else:
-            color = self.color
-
-        pygame.draw.rect(screen, color, self.rect, border_radius=5)
-        pygame.draw.rect(screen, (200, 200, 200), self.rect, 2, border_radius=5)
-
-        text_surf = font.render(self.text, True, WHITE)
-        text_rect = text_surf.get_rect(center=self.rect.center)
-        screen.blit(text_surf, text_rect)
-
-    def handle_event(self, event) -> bool:
-        """Handle mouse events."""
-        if not self.enabled:
-            return False
-
-        if event.type == pygame.MOUSEMOTION:
-            self.hovered = self.rect.collidepoint(event.pos)
-
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.rect.collidepoint(event.pos):
-                return True
-        return False
-
-
-class TournamentGUI:
     """GUI for watching chess engine tournaments with configuration screen."""
 
     def __init__(self):
@@ -105,10 +52,10 @@ class TournamentGUI:
         self.mode = "config"  # "config" or "tournament"
 
         # Find available engines
-        self.available_engines = self.find_engines()
+        self.available_engines = find_all_engines()
 
         # Configuration settings (defaults)
-        engine_names = [name for name, _ in self.available_engines]
+        engine_names = [name for name, _, _ in self.available_engines]
         default1 = "engine_v5_optimized" if "engine_v5_optimized" in engine_names else engine_names[0]
         default2 = "engine_v5" if "engine_v5" in engine_names else engine_names[0]
 
@@ -138,8 +85,8 @@ class TournamentGUI:
         # Create config UI
         self.create_config_ui()
 
-        # Load piece font
-        self.load_pieces()
+        # Create board renderer
+        self.board_renderer = ChessBoardRenderer(SQUARE_SIZE)
 
     def find_engines(self) -> List[str]:
         """Find available engine modules with nice display names."""
