@@ -8,14 +8,19 @@ import pygame
 import chess
 import threading
 import importlib
-import glob
-import os
 import json
 import time
 from typing import List, Dict
 from collections import defaultdict
 from test_suite import TestSuite, TestPosition
 from stockfish_analyzer import StockfishAnalyzer
+from gui_utils import (
+    Button, Dropdown, ChessBoardRenderer,
+    find_all_engines, format_engine_name,
+    WHITE, BLACK, LIGHT_SQUARE, DARK_SQUARE,
+    BUTTON_COLOR, BUTTON_HOVER, TEXT_COLOR,
+    DROPDOWN_BG, DROPDOWN_HOVER, DROPDOWN_SELECTED, PIECE_UNICODE
+)
 
 # Initialize pygame
 pygame.init()
@@ -27,22 +32,12 @@ BOARD_SIZE = 640
 SQUARE_SIZE = 80
 PANEL_WIDTH = WINDOW_WIDTH - BOARD_SIZE
 
-# Colors
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-LIGHT_SQUARE = (240, 217, 181)
-DARK_SQUARE = (181, 136, 99)
+# Test-suite specific colors
 HIGHLIGHT_CORRECT = (130, 200, 105, 180)  # Green
 HIGHLIGHT_WRONG = (231, 76, 60, 180)      # Red
 HIGHLIGHT_PARTIAL = (255, 215, 0, 180)    # Yellow
 HIGHLIGHT_EXPECTED = (100, 150, 255, 180) # Blue
-BUTTON_COLOR = (52, 73, 94)
-BUTTON_HOVER = (71, 101, 130)
-DROPDOWN_BG = (45, 45, 45)
-DROPDOWN_HOVER = (60, 60, 60)
-DROPDOWN_SELECTED = (75, 110, 140)
 PANEL_BG = (250, 250, 252)
-TEXT_COLOR = (50, 50, 50)
 HEADER_BG = (38, 38, 38)
 HEADER_TEXT = (230, 230, 230)
 
@@ -52,324 +47,6 @@ FONT_SMALL = pygame.font.SysFont('Arial', 16)
 FONT_TINY = pygame.font.SysFont('Arial', 14)
 FONT_TITLE = pygame.font.SysFont('Arial', 24, bold=True)
 FONT_LARGE = pygame.font.SysFont('Arial', 32, bold=True)
-
-# Unicode chess pieces
-PIECE_UNICODE = {
-    'P': '\u2659', 'N': '\u2658', 'B': '\u2657', 'R': '\u2656', 'Q': '\u2655', 'K': '\u2654',
-    'p': '\u265F', 'n': '\u265E', 'b': '\u265D', 'r': '\u265C', 'q': '\u265B', 'k': '\u265A',
-}
-
-
-def find_all_engines():
-    """Dynamically find all chess engines in the project."""
-    engines = []
-
-    # Search in current directory
-    for file in glob.glob("engine*.py"):
-        if file == "benchmark_engines.py":
-            continue
-        module_name = file[:-3]
-        display_name = format_engine_name(module_name)
-        engines.append((module_name, display_name, "local"))
-
-    # Search in engine_pool directory
-    if os.path.exists("engine_pool"):
-        for file in glob.glob("engine_pool/*.py"):
-            if file.endswith("__init__.py"):
-                continue
-            filename = os.path.basename(file)[:-3]
-            module_name = f"engine_pool.{filename}"
-            display_name = format_engine_name(filename)
-            engines.append((module_name, display_name, "pool"))
-
-    # Sort: prioritize optimized engines
-    def sort_key(item):
-        module_name, display_name, source = item
-        if "optimized" in module_name:
-            return (0, display_name)
-        elif source == "local" and "v5" in module_name:
-            return (1, display_name)
-        elif source == "local":
-            return (2, display_name)
-        else:
-            return (3, display_name)
-
-    engines.sort(key=sort_key)
-    return engines if engines else [("engine", "Basic Engine", "local")]
-
-
-def format_engine_name(module_name):
-    """Format engine module name for display."""
-    name = module_name.replace("engine_pool.", "")
-
-    if "engine_v5_optimized" in name:
-        return "V5 Optimized"
-    elif "engine_v5_fast" in name:
-        return "V5 Fast"
-    elif "engine_v5" in name:
-        return "V5"
-    elif "engine_v4" in name:
-        return "V4"
-    elif "engine_v3" in name:
-        return "V3"
-    elif name == "engine":
-        return "Basic Engine"
-    else:
-        return name.replace("_", " ").title()
-
-
-class Button:
-    def __init__(self, x, y, width, height, text, callback):
-        self.rect = pygame.Rect(x, y, width, height)
-        self.text = text
-        self.callback = callback
-        self.hovered = False
-
-    def draw(self, screen):
-        color = BUTTON_HOVER if self.hovered else BUTTON_COLOR
-        pygame.draw.rect(screen, color, self.rect, border_radius=5)
-        pygame.draw.rect(screen, BLACK, self.rect, 2, border_radius=5)
-
-        text_surface = FONT.render(self.text, True, WHITE)
-        text_rect = text_surface.get_rect(center=self.rect.center)
-        screen.blit(text_surface, text_rect)
-
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEMOTION:
-            self.hovered = self.rect.collidepoint(event.pos)
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            if self.rect.collidepoint(event.pos):
-                self.callback()
-                return True
-        return False
-
-
-class Dropdown:
-    def __init__(self, x, y, width, items, default_index=0, max_visible=10):
-        self.rect = pygame.Rect(x, y, width, 40)
-        self.items = items
-        self.selected_index = default_index
-        self.is_open = False
-        self.hovered_index = -1
-        self.scroll_offset = 0
-        self.max_visible = max_visible
-
-    def get_selected(self):
-        return self.items[self.selected_index][0]
-
-    def get_dropdown_rect(self):
-        item_height = 35
-        visible_items = min(len(self.items), self.max_visible)
-        return pygame.Rect(self.rect.x, self.rect.y + self.rect.height,
-                          self.rect.width, visible_items * item_height)
-
-    def draw(self, screen):
-        color = BUTTON_HOVER if self.is_open else BUTTON_COLOR
-        pygame.draw.rect(screen, color, self.rect, border_radius=5)
-        pygame.draw.rect(screen, (100, 100, 100), self.rect, 2, border_radius=5)
-
-        _, display_name, source = self.items[self.selected_index]
-        source_icon = "" if source == "local" else "P "
-        text = FONT_SMALL.render(f"{source_icon}{display_name}", True, WHITE)
-        text_rect = text.get_rect(midleft=(self.rect.x + 10, self.rect.centery))
-        screen.blit(text, text_rect)
-
-        arrow = "v" if not self.is_open else "^"
-        arrow_text = FONT_SMALL.render(arrow, True, WHITE)
-        arrow_rect = arrow_text.get_rect(midright=(self.rect.right - 10, self.rect.centery))
-        screen.blit(arrow_text, arrow_rect)
-
-        if self.is_open:
-            dropdown_rect = self.get_dropdown_rect()
-            pygame.draw.rect(screen, DROPDOWN_BG, dropdown_rect, border_radius=5)
-            pygame.draw.rect(screen, (100, 100, 100), dropdown_rect, 2, border_radius=5)
-
-            start_idx = self.scroll_offset
-            end_idx = min(start_idx + self.max_visible, len(self.items))
-
-            item_height = 35
-            for i in range(start_idx, end_idx):
-                display_idx = i - start_idx
-                item_rect = pygame.Rect(dropdown_rect.x, dropdown_rect.y + display_idx * item_height,
-                                       dropdown_rect.width, item_height)
-
-                if i == self.selected_index:
-                    pygame.draw.rect(screen, DROPDOWN_SELECTED, item_rect)
-                elif i == self.hovered_index:
-                    pygame.draw.rect(screen, DROPDOWN_HOVER, item_rect)
-
-                _, display_name, source = self.items[i]
-                source_icon = "" if source == "local" else "P "
-                item_text = FONT_TINY.render(f"{source_icon}{display_name}", True, WHITE)
-                item_text_rect = item_text.get_rect(midleft=(item_rect.x + 10, item_rect.centery))
-                screen.blit(item_text, item_text_rect)
-
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:
-                if self.rect.collidepoint(event.pos):
-                    self.is_open = not self.is_open
-                    if self.is_open:
-                        self.scroll_offset = 0
-                    return True
-                elif self.is_open:
-                    dropdown_rect = self.get_dropdown_rect()
-                    if dropdown_rect.collidepoint(event.pos):
-                        item_height = 35
-                        rel_y = event.pos[1] - dropdown_rect.y
-                        clicked_idx = self.scroll_offset + (rel_y // item_height)
-                        if 0 <= clicked_idx < len(self.items):
-                            self.selected_index = clicked_idx
-                            self.is_open = False
-                            return True
-                    else:
-                        self.is_open = False
-            elif event.button == 4 and self.is_open:
-                dropdown_rect = self.get_dropdown_rect()
-                if dropdown_rect.collidepoint(event.pos):
-                    self.scroll_offset = max(0, self.scroll_offset - 1)
-                    return True
-            elif event.button == 5 and self.is_open:
-                dropdown_rect = self.get_dropdown_rect()
-                if dropdown_rect.collidepoint(event.pos):
-                    max_scroll = max(0, len(self.items) - self.max_visible)
-                    self.scroll_offset = min(max_scroll, self.scroll_offset + 1)
-                    return True
-        elif event.type == pygame.MOUSEMOTION and self.is_open:
-            dropdown_rect = self.get_dropdown_rect()
-            if dropdown_rect.collidepoint(event.pos):
-                item_height = 35
-                rel_y = event.pos[1] - dropdown_rect.y
-                self.hovered_index = self.scroll_offset + (rel_y // item_height)
-            else:
-                self.hovered_index = -1
-        return False
-
-
-class TextInput:
-    def __init__(self, x, y, width, default_value="1.0", input_type="float"):
-        self.rect = pygame.Rect(x, y, width, 40)
-        self.text = default_value
-        self.active = False
-        self.cursor_visible = True
-        self.cursor_timer = 0
-        self.input_type = input_type
-
-    def get_value(self):
-        try:
-            if self.input_type == "int":
-                val = int(self.text)
-                return max(1, min(99, val))
-            else:
-                val = float(self.text)
-                return max(0.1, min(60.0, val))
-        except ValueError:
-            return 99 if self.input_type == "int" else 1.0
-
-    def draw(self, screen):
-        border_color = (100, 150, 255) if self.active else (150, 150, 150)
-        pygame.draw.rect(screen, WHITE, self.rect)
-        pygame.draw.rect(screen, border_color, self.rect, 2)
-
-        text_surface = FONT.render(self.text, True, BLACK)
-        screen.blit(text_surface, (self.rect.x + 10, self.rect.y + 10))
-
-        if self.active and self.cursor_visible:
-            cursor_x = self.rect.x + 10 + FONT.size(self.text)[0]
-            pygame.draw.line(screen, BLACK,
-                           (cursor_x, self.rect.y + 8),
-                           (cursor_x, self.rect.y + 32), 2)
-
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            self.active = self.rect.collidepoint(event.pos)
-        elif event.type == pygame.KEYDOWN and self.active:
-            if event.key == pygame.K_BACKSPACE:
-                self.text = self.text[:-1]
-            elif event.key == pygame.K_RETURN:
-                self.active = False
-            elif event.unicode.isdigit() or (event.unicode == '.' and self.input_type == "float"):
-                self.text += event.unicode
-
-
-class CategoryCheckbox:
-    def __init__(self, name, tests, y_pos):
-        self.name = name
-        self.tests = tests
-        self.y = y_pos
-        self.selected = False
-        self.expanded = False
-        self.test_checkboxes = {test.id: False for test in tests}
-        self.rect = pygame.Rect(50, y_pos, 20, 20)
-        self.expand_rect = pygame.Rect(950, y_pos, 20, 20)
-
-    def get_selected_tests(self):
-        return [t for t in self.tests if self.test_checkboxes[t.id]]
-
-    def draw(self, screen):
-        # Category checkbox
-        pygame.draw.rect(screen, WHITE, self.rect)
-        pygame.draw.rect(screen, BLACK, self.rect, 2)
-        if self.selected or any(self.test_checkboxes.values()):
-            pygame.draw.line(screen, BLACK, (self.rect.x + 3, self.rect.y + 10),
-                           (self.rect.x + 8, self.rect.y + 15), 3)
-            pygame.draw.line(screen, BLACK, (self.rect.x + 8, self.rect.y + 15),
-                           (self.rect.x + 17, self.rect.y + 5), 3)
-
-        # Category name
-        name_text = FONT.render(f"{self.name} ({len(self.tests)} tests)", True, TEXT_COLOR)
-        screen.blit(name_text, (self.rect.x + 30, self.rect.y))
-
-        # Expand button
-        arrow = "v" if not self.expanded else "^"
-        arrow_text = FONT_SMALL.render(arrow, True, TEXT_COLOR)
-        screen.blit(arrow_text, (self.expand_rect.x, self.expand_rect.y))
-
-        # Draw individual tests if expanded
-        if self.expanded:
-            for i, test in enumerate(self.tests[:5]):  # Show max 5
-                test_y = self.y + 30 + i * 25
-                test_rect = pygame.Rect(70, test_y, 15, 15)
-                pygame.draw.rect(screen, WHITE, test_rect)
-                pygame.draw.rect(screen, BLACK, test_rect, 1)
-
-                if self.test_checkboxes[test.id]:
-                    pygame.draw.line(screen, BLACK, (test_rect.x + 2, test_rect.y + 7),
-                                   (test_rect.x + 6, test_rect.y + 11), 2)
-                    pygame.draw.line(screen, BLACK, (test_rect.x + 6, test_rect.y + 11),
-                                   (test_rect.x + 13, test_rect.y + 3), 2)
-
-                test_name = FONT_SMALL.render(test.name[:40], True, TEXT_COLOR)
-                screen.blit(test_name, (test_rect.x + 20, test_rect.y))
-
-            if len(self.tests) > 5:
-                more_text = FONT_TINY.render(f"... and {len(self.tests) - 5} more", True, (100, 100, 100))
-                screen.blit(more_text, (70, self.y + 30 + 5 * 25))
-
-    def handle_event(self, event, mouse_pos):
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            # Category checkbox
-            if self.rect.collidepoint(mouse_pos):
-                self.selected = not self.selected
-                # Toggle all tests
-                for test_id in self.test_checkboxes:
-                    self.test_checkboxes[test_id] = self.selected
-                return True
-
-            # Expand button
-            if self.expand_rect.collidepoint(mouse_pos):
-                self.expanded = not self.expanded
-                return True
-
-            # Individual test checkboxes
-            if self.expanded:
-                for i, test in enumerate(self.tests[:5]):
-                    test_y = self.y + 30 + i * 25
-                    test_rect = pygame.Rect(70, test_y, 15, 15)
-                    if test_rect.collidepoint(mouse_pos):
-                        self.test_checkboxes[test.id] = not self.test_checkboxes[test.id]
-                        return True
-        return False
 
 
 class InteractiveTestSuite:
@@ -409,36 +86,11 @@ class InteractiveTestSuite:
         self.results = []
         self.display_state = "position"  # position | engine_move | both_moves
 
-        # Load piece font
-        self.piece_font = self.load_piece_font()
+        # Create board renderer
+        self.board_renderer = ChessBoardRenderer(SQUARE_SIZE)
 
         # Clock
         self.clock = pygame.time.Clock()
-
-    def load_piece_font(self):
-        # Try chess font files
-        chess_font_files = ['ChessMerida.ttf', 'ChessAlpha.ttf', 'chess_merida_unicode.ttf']
-        for font_file in chess_font_files:
-            try:
-                font = pygame.font.Font(font_file, 65)
-                print(f"Loaded chess font: {font_file}")
-                return font
-            except:
-                continue
-
-        # Try system fonts with chess unicode support
-        piece_font_names = ['Segoe UI Symbol', 'Arial Unicode MS', 'DejaVu Sans', 'FreeSans']
-        for font_name in piece_font_names:
-            try:
-                font = pygame.font.SysFont(font_name, 65)
-                print(f"Using system font: {font_name}")
-                return font
-            except:
-                continue
-
-        # Final fallback
-        print("Using default font - pieces may not display correctly")
-        return pygame.font.SysFont(None, 65)
 
     def start_testing(self):
         # Collect selected tests
@@ -637,25 +289,17 @@ class InteractiveTestSuite:
         # Determine if board should be flipped (Black's perspective)
         flipped = board.turn == chess.BLACK
 
-        # Draw squares
-        for row in range(8):
-            for col in range(8):
-                x = col * SQUARE_SIZE
-                y = row * SQUARE_SIZE
+        # Use board renderer for basic board
+        self.board_renderer.draw_board(
+            screen=self.screen,
+            board=board,
+            x=0,
+            y=0,
+            flipped=flipped,
+            draw_coordinates=True
+        )
 
-                if flipped:
-                    actual_col = 7 - col
-                    actual_row = row
-                else:
-                    actual_col = col
-                    actual_row = 7 - row
-
-                square = chess.square(actual_col, actual_row)
-
-                color = LIGHT_SQUARE if (row + col) % 2 == 0 else DARK_SQUARE
-                pygame.draw.rect(self.screen, color, (x, y, SQUARE_SIZE, SQUARE_SIZE))
-
-        # Highlight moves
+        # Custom highlighting for test results
         if self.current_result and self.display_state != "position":
             try:
                 engine_move = chess.Move.from_uci(self.current_result['engine_move'])
@@ -676,56 +320,6 @@ class InteractiveTestSuite:
                         self.highlight_move(stockfish_move, HIGHLIGHT_EXPECTED, flipped)
             except:
                 pass
-
-        # Draw pieces
-        for row in range(8):
-            for col in range(8):
-                x = col * SQUARE_SIZE
-                y = row * SQUARE_SIZE
-
-                if flipped:
-                    actual_col = 7 - col
-                    actual_row = row
-                else:
-                    actual_col = col
-                    actual_row = 7 - row
-
-                square = chess.square(actual_col, actual_row)
-
-                piece = board.piece_at(square)
-                if piece:
-                    piece_char = piece.symbol()
-                    piece_unicode = PIECE_UNICODE.get(piece_char, piece_char)
-
-                    if piece.color == chess.WHITE:
-                        outline = self.piece_font.render(piece_unicode, True, (50, 50, 50))
-                        text_rect = outline.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
-                        for dx, dy in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
-                            self.screen.blit(outline, (text_rect.x + dx, text_rect.y + dy))
-                        text = self.piece_font.render(piece_unicode, True, (255, 255, 255))
-                        self.screen.blit(text, text_rect)
-                    else:
-                        text = self.piece_font.render(piece_unicode, True, (30, 30, 30))
-                        text_rect = text.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
-                        self.screen.blit(text, text_rect)
-
-        # Draw coordinates
-        coord_font = pygame.font.SysFont('Arial', 14, bold=True)
-        for i in range(8):
-            if flipped:
-                file_label = chr(ord('h') - i)
-                rank_label = str(i + 1)
-            else:
-                file_label = chr(ord('a') + i)
-                rank_label = str(8 - i)
-
-            # Files (a-h) at bottom
-            text = coord_font.render(file_label, True, (100, 100, 100))
-            self.screen.blit(text, (i * SQUARE_SIZE + SQUARE_SIZE - 15, BOARD_SIZE - 15))
-
-            # Ranks (1-8) on left
-            text = coord_font.render(rank_label, True, (100, 100, 100))
-            self.screen.blit(text, (5, i * SQUARE_SIZE + 5))
 
     def highlight_move(self, move, color, flipped=False):
         for square in [move.from_square, move.to_square]:
