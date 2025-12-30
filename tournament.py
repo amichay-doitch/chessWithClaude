@@ -421,4 +421,4 @@ def main():
 if __name__ == "__main__":
     main()
     # run with --engine1 engine_v3 --engine2 engine_v4 --games 10 --time 5 --depth1 8 --depth2 8
-    # --engine1 engine_v5 --engine2 engine_fast --games 2 --depth1 20 --depth2 20 --time 2.0
+    # --engine1 engine_v5 --engine2 engine --games 2 --depth1 20 --depth2 20 --time 1.5

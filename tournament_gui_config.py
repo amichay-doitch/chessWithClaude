@@ -108,13 +108,17 @@ class TournamentGUI:
         self.available_engines = self.find_engines()
 
         # Configuration settings (defaults)
+        engine_names = [name for name, _ in self.available_engines]
+        default1 = "engine_v5_optimized" if "engine_v5_optimized" in engine_names else engine_names[0]
+        default2 = "engine_v5" if "engine_v5" in engine_names else engine_names[0]
+
         self.config = {
-            "engine1": "engine_v3" if "engine_v3" in self.available_engines else self.available_engines[0],
-            "engine2": "engine_v4" if "engine_v4" in self.available_engines else self.available_engines[0],
-            "depth1": 5,
-            "depth2": 5,
+            "engine1": default1,
+            "engine2": default2,
+            "depth1": 6,
+            "depth2": 6,
             "num_games": 10,
-            "time_limit": None,
+            "time_limit": 3.0,
             "output_dir": "games"
         }
 
@@ -138,52 +142,85 @@ class TournamentGUI:
         self.load_pieces()
 
     def find_engines(self) -> List[str]:
-        """Find available engine modules."""
-        engines = []
+        """Find available engine modules with nice display names."""
+        engines_with_info = []
         for file in glob.glob("engine*.py"):
             module_name = file[:-3]  # Remove .py
-            engines.append(module_name)
-        engines.sort()
-        return engines if engines else ["engine"]
+
+            # Create display name
+            display_name = module_name
+            if module_name == "engine_v5_optimized":
+                display_name = "v5 Optimized ⚡"
+            elif module_name == "engine_v5_fast":
+                display_name = "v5 Fast"
+            elif module_name == "engine_v5":
+                display_name = "v5"
+            elif module_name == "engine_v4":
+                display_name = "v4"
+            elif module_name == "engine_v3":
+                display_name = "v3"
+            elif module_name == "engine_fast":
+                display_name = "Fast"
+            elif module_name == "engine":
+                display_name = "Basic"
+
+            engines_with_info.append((module_name, display_name))
+
+        # Sort: prioritize optimized, then by version
+        def sort_key(item):
+            name, _ = item
+            if "optimized" in name:
+                return (0, name)
+            elif "v5" in name:
+                return (1, name)
+            elif "v4" in name:
+                return (2, name)
+            elif "v3" in name:
+                return (3, name)
+            else:
+                return (4, name)
+
+        engines_with_info.sort(key=sort_key)
+        return engines_with_info if engines_with_info else [("engine", "Basic")]
 
     def create_config_ui(self):
         """Create configuration UI elements."""
         panel_x = BOARD_SIZE + 30
         y_start = 100
-        button_width = 120
-        button_height = 40
-        spacing = 10
+        button_width = 180
+        button_height = 36
+        spacing = 8
 
-        # Engine 1 buttons
+        # Engine 1 buttons (column 1)
         self.engine1_buttons = []
         y = y_start
-        for i, engine in enumerate(self.available_engines):
-            btn = Button(panel_x, y + i * (button_height + spacing), 180, button_height,
-                        engine, BUTTON_COLOR)
-            btn.selected = (engine == self.config["engine1"])
-            self.engine1_buttons.append((btn, engine))
+        for i, (engine_name, display_name) in enumerate(self.available_engines):
+            btn = Button(panel_x, y + i * (button_height + spacing), button_width, button_height,
+                        display_name, BUTTON_COLOR)
+            btn.selected = (engine_name == self.config["engine1"])
+            self.engine1_buttons.append((btn, engine_name, display_name))
 
-        # Engine 2 buttons
+        # Engine 2 buttons (column 2)
         self.engine2_buttons = []
         y = y_start
-        for i, engine in enumerate(self.available_engines):
-            btn = Button(panel_x + 220, y + i * (button_height + spacing), 180, button_height,
-                        engine, BUTTON_COLOR)
-            btn.selected = (engine == self.config["engine2"])
-            self.engine2_buttons.append((btn, engine))
+        for i, (engine_name, display_name) in enumerate(self.available_engines):
+            btn = Button(panel_x + button_width + 20, y + i * (button_height + spacing), button_width, button_height,
+                        display_name, BUTTON_COLOR)
+            btn.selected = (engine_name == self.config["engine2"])
+            self.engine2_buttons.append((btn, engine_name, display_name))
 
         # Depth buttons
-        y = y_start + len(self.available_engines) * (button_height + spacing) + 40
+        y = y_start + len(self.available_engines) * (button_height + spacing) + 30
         self.depth1_buttons = []
-        for i, depth in enumerate([3, 4, 5, 6, 7]):
-            btn = Button(panel_x + i * 45, y, 40, 35, str(depth), BUTTON_COLOR)
+        for i, depth in enumerate([3, 4, 5, 6, 7, 8]):
+            btn = Button(panel_x + i * 40, y, 35, 35, str(depth), BUTTON_COLOR)
             btn.selected = (depth == self.config["depth1"])
             self.depth1_buttons.append((btn, depth))
 
         self.depth2_buttons = []
-        y += 60
-        for i, depth in enumerate([3, 4, 5, 6, 7]):
-            btn = Button(panel_x + i * 45, y, 40, 35, str(depth), BUTTON_COLOR)
+        y += 50
+        for i, depth in enumerate([3, 4, 5, 6, 7, 8]):
+            btn = Button(panel_x + i * 40, y, 35, 35, str(depth), BUTTON_COLOR)
             btn.selected = (depth == self.config["depth2"])
             self.depth2_buttons.append((btn, depth))
 
@@ -198,9 +235,9 @@ class TournamentGUI:
         # Time limit buttons
         y += 80
         self.time_limit_buttons = []
-        time_options = [("Depth", None), ("0.1s", 0.1), ("1s", 1.0), ("2s", 2.0), ("5s", 5.0), ("10s", 10.0)]
+        time_options = [("Depth", None), ("1s", 1.0), ("3s", 3.0), ("5s", 5.0), ("10s", 10.0)]
         for i, (label, time_val) in enumerate(time_options):
-            btn = Button(panel_x + i * 50, y, 45, 35, label, BUTTON_COLOR)
+            btn = Button(panel_x + i * 55, y, 50, 35, label, BUTTON_COLOR)
             btn.selected = (time_val == self.config["time_limit"])
             self.time_limit_buttons.append((btn, time_val, label))
 
@@ -272,104 +309,159 @@ class TournamentGUI:
 
         # Engine 2 label
         label2 = self.font.render("Engine 2:", True, TEXT_COLOR)
-        self.screen.blit(label2, (panel_x + 220, y - 30))
+        self.screen.blit(label2, (panel_x + 200, y - 30))
 
         # Draw engine buttons
-        for btn, engine in self.engine1_buttons:
+        for btn, engine_name, display_name in self.engine1_buttons:
             btn.draw(self.screen, self.tiny_font)
 
-        for btn, engine in self.engine2_buttons:
+        for btn, engine_name, display_name in self.engine2_buttons:
             btn.draw(self.screen, self.tiny_font)
 
         # Depth labels and buttons
-        y = y + len(self.available_engines) * 50 + 40
-        depth1_label = self.font.render(f"Engine 1 Depth:", True, TEXT_COLOR)
-        self.screen.blit(depth1_label, (panel_x, y - 30))
+        y = y + len(self.available_engines) * 44 + 30
+        depth1_label = self.small_font.render(f"Depth 1:", True, TEXT_COLOR)
+        self.screen.blit(depth1_label, (panel_x, y - 25))
 
         for btn, depth in self.depth1_buttons:
             btn.draw(self.screen, self.small_font)
 
-        y += 60
-        depth2_label = self.font.render(f"Engine 2 Depth:", True, TEXT_COLOR)
-        self.screen.blit(depth2_label, (panel_x, y - 30))
+        y += 50
+        depth2_label = self.small_font.render(f"Depth 2:", True, TEXT_COLOR)
+        self.screen.blit(depth2_label, (panel_x, y - 25))
 
         for btn, depth in self.depth2_buttons:
             btn.draw(self.screen, self.small_font)
 
         # Games label and buttons
-        y += 80
-        games_label = self.font.render("Number of Games:", True, TEXT_COLOR)
-        self.screen.blit(games_label, (panel_x, y - 30))
+        y += 60
+        games_label = self.small_font.render("Games:", True, TEXT_COLOR)
+        self.screen.blit(games_label, (panel_x, y - 25))
 
         for btn, games in self.games_buttons:
             btn.draw(self.screen, self.small_font)
 
         # Time limit label and buttons
-        y += 80
-        time_label = self.font.render("Time per Move:", True, TEXT_COLOR)
-        self.screen.blit(time_label, (panel_x, y - 30))
+        y += 60
+        time_label = self.small_font.render("Time/Move:", True, TEXT_COLOR)
+        self.screen.blit(time_label, (panel_x, y - 25))
 
         for btn, time_val, label in self.time_limit_buttons:
             btn.draw(self.screen, self.tiny_font)
 
         # Output directory label and buttons
-        y += 80
-        output_label = self.font.render("Output Directory:", True, TEXT_COLOR)
-        self.screen.blit(output_label, (panel_x, y - 30))
+        y += 60
+        output_label = self.small_font.render("Output:", True, TEXT_COLOR)
+        self.screen.blit(output_label, (panel_x, y - 25))
 
         for btn, dir_name in self.output_dir_buttons:
             btn.draw(self.screen, self.tiny_font)
 
-        # Current config display
-        y += 80
-        time_display = f"{self.config['time_limit']}s per move" if self.config['time_limit'] else "Depth-based"
+        # Current config display box
+        y += 70
+        config_box = pygame.Rect(panel_x - 10, y, PANEL_WIDTH - 40, 130)
+        pygame.draw.rect(self.screen, WHITE, config_box, border_radius=8)
+        pygame.draw.rect(self.screen, GREEN, config_box, 2, border_radius=8)
+
+        # Get display names
+        engine1_display = next((d for n, d in self.available_engines if n == self.config['engine1']), self.config['engine1'])
+        engine2_display = next((d for n, d in self.available_engines if n == self.config['engine2']), self.config['engine2'])
+
+        time_display = f"{self.config['time_limit']}s/move" if self.config['time_limit'] else "Depth-based"
         config_text = [
-            f"Ready to start:",
-            f"{self.config['engine1']} (depth {self.config['depth1']}) vs",
-            f"{self.config['engine2']} (depth {self.config['depth2']})",
-            f"{self.config['num_games']} games",
-            f"Time: {time_display}",
-            f"Output: {self.config['output_dir']}"
+            f"⚡ READY TO START",
+            f"{engine1_display} (D{self.config['depth1']}) vs",
+            f"{engine2_display} (D{self.config['depth2']})",
+            f"{self.config['num_games']} games • {time_display}",
+            f"→ {self.config['output_dir']}/"
         ]
         for i, line in enumerate(config_text):
-            text = self.small_font.render(line, True, TEXT_COLOR)
-            self.screen.blit(text, (panel_x, y + i * 22))
+            color = GREEN if i == 0 else TEXT_COLOR
+            font = self.small_font if i > 0 else self.font
+            text = font.render(line, True, color)
+            self.screen.blit(text, (panel_x, y + 10 + i * 24))
 
         # Start button
         self.config_start_button.draw(self.screen, self.font)
 
-        # Instructions on left side
-        instructions = [
-            "Select engines and settings,",
-            "then click START TOURNAMENT",
-            "",
-            "Controls during tournament:",
-            "SPACE - Start/Pause",
-            "S - Stop",
-            "Q - Quit",
-            "1/2/3/4 - Speed control"
+        # Info panel on left side
+        left_box = pygame.Rect(20, 90, BOARD_SIZE - 40, 550)
+        pygame.draw.rect(self.screen, WHITE, left_box, border_radius=10)
+        pygame.draw.rect(self.screen, (200, 200, 220), left_box, 2, border_radius=10)
+
+        left_y = 110
+        # Title
+        info_title = self.font.render("⚡ Engine Performance Guide", True, TEXT_COLOR)
+        self.screen.blit(info_title, (40, left_y))
+        left_y += 40
+
+        # Engine descriptions
+        engine_info = [
+            ("v5 Optimized ⚡", "Fastest! 3.8x faster than v5 Fast", GREEN),
+            ("v5 Fast", "NumPy optimized, medium speed", BUTTON_COLOR),
+            ("v5", "Full evaluation, slower but strong", BUTTON_COLOR),
+            ("v4", "Advanced features, good balance", BUTTON_COLOR),
+            ("v3", "Classic engine", BUTTON_COLOR),
         ]
-        for i, line in enumerate(instructions):
-            text = self.small_font.render(line, True, TEXT_COLOR)
-            self.screen.blit(text, (30, 150 + i * 30))
+
+        for name, desc, color in engine_info:
+            name_text = self.small_font.render(f"• {name}:", True, color)
+            self.screen.blit(name_text, (40, left_y))
+            desc_text = self.tiny_font.render(desc, True, TEXT_COLOR)
+            self.screen.blit(desc_text, (60, left_y + 20))
+            left_y += 50
+
+        left_y += 20
+        # Controls section
+        controls_title = self.small_font.render("Tournament Controls:", True, TEXT_COLOR)
+        self.screen.blit(controls_title, (40, left_y))
+        left_y += 30
+
+        controls = [
+            "SPACE - Start/Pause game",
+            "S - Stop tournament",
+            "Q - Quit application",
+            "Speed buttons - Adjust playback"
+        ]
+        for line in controls:
+            text = self.tiny_font.render(f"• {line}", True, TEXT_COLOR)
+            self.screen.blit(text, (50, left_y))
+            left_y += 25
+
+        left_y += 20
+        # Tips section
+        tips_title = self.small_font.render("💡 Quick Tips:", True, ORANGE)
+        self.screen.blit(tips_title, (40, left_y))
+        left_y += 30
+
+        tips = [
+            "Higher depth = stronger but slower",
+            "Time limit = fixed seconds per move",
+            "100x speed = fastest for quick testing",
+            "Games saved as PGN in output folder"
+        ]
+        for line in tips:
+            text = self.tiny_font.render(f"• {line}", True, TEXT_COLOR)
+            self.screen.blit(text, (50, left_y))
+            left_y += 25
 
     def handle_config_events(self, event):
         """Handle events in config mode."""
         # Engine 1 selection
-        for btn, engine in self.engine1_buttons:
+        for btn, engine_name, display_name in self.engine1_buttons:
             if btn.handle_event(event):
-                self.config["engine1"] = engine
+                self.config["engine1"] = engine_name
                 # Update selected states
-                for b, e in self.engine1_buttons:
-                    b.selected = (e == engine)
+                for b, e, d in self.engine1_buttons:
+                    b.selected = (e == engine_name)
 
         # Engine 2 selection
-        for btn, engine in self.engine2_buttons:
+        for btn, engine_name, display_name in self.engine2_buttons:
             if btn.handle_event(event):
-                self.config["engine2"] = engine
+                self.config["engine2"] = engine_name
                 # Update selected states
-                for b, e in self.engine2_buttons:
-                    b.selected = (e == engine)
+                for b, e, d in self.engine2_buttons:
+                    b.selected = (e == engine_name)
 
         # Depth 1 selection
         for btn, depth in self.depth1_buttons:
