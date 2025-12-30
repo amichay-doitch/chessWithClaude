@@ -33,6 +33,7 @@ SCREEN_HEIGHT = 720
 SQUARE_SIZE = BOARD_SIZE // 8
 
 
+class TournamentGUI:
     """GUI for watching chess engine tournaments with configuration screen."""
 
     def __init__(self):

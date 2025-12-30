@@ -8,7 +8,8 @@ import sys
 import threading
 import importlib
 from board import ChessBoard
-from engine import ChessEngine, SearchResult
+from engine_v5 import ChessEngine
+from engine_base import SearchResult
 from gui_utils import (
     Button, Dropdown, ChessBoardRenderer,
     find_all_engines, format_engine_name,
