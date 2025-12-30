@@ -19,7 +19,8 @@
       "Bash(tasklist:*)",
       "Bash(tee:*)",
       "Bash(\"C:/Users/AmichayDeutsch/miniconda3/envs/chessWithClaude/python.exe\" test_suite_interactive.py)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(wc:*)"
     ],
     "deny": [],
     "ask": []
