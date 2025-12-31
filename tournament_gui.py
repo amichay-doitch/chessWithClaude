@@ -468,8 +468,8 @@ def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Tournament GUI")
 
-    parser.add_argument("--engine1", default="engine_v3", help="First engine module")
-    parser.add_argument("--engine2", default="engine_v4", help="Second engine module")
+    parser.add_argument("--engine1", default="engine_pool.engine_v3", help="First engine module")
+    parser.add_argument("--engine2", default="engine_pool.engine_v4", help="Second engine module")
     parser.add_argument("--games", type=int, default=10, help="Number of games")
     parser.add_argument("--depth1", type=int, default=5, help="Depth for engine 1")
     parser.add_argument("--depth2", type=int, default=5, help="Depth for engine 2")

@@ -146,7 +146,7 @@ def format_engine_name(module_name: str) -> str:
 class Button:
     """Reusable button widget."""
 
-    def __init__(self, x: int, y: int, width: int, height: int, text: str, callback):
+    def __init__(self, x: int, y: int, width: int, height: int, text: str, color_or_callback=None):
         """
         Create a button.
 
@@ -154,19 +154,37 @@ class Button:
             x, y: Position
             width, height: Size
             text: Button label
-            callback: Function to call when clicked
+            color_or_callback: Either a color tuple (R,G,B) or a callback function (optional)
         """
         self.rect = pygame.Rect(x, y, width, height)
         self.text = text
-        self.callback = callback
         self.hovered = False
+        self.enabled = True
+
+        # Determine if color_or_callback is a color or callback
+        if color_or_callback is None:
+            self.color = BUTTON_COLOR
+            self.callback = None
+        elif callable(color_or_callback):
+            self.color = BUTTON_COLOR
+            self.callback = color_or_callback
+        else:
+            # It's a color tuple
+            self.color = color_or_callback
+            self.callback = None
 
     def draw(self, screen: pygame.Surface, font: pygame.font.Font = None):
         """Draw the button."""
         if font is None:
             font = pygame.font.SysFont('Arial', 20)
 
-        color = BUTTON_HOVER if self.hovered else BUTTON_COLOR
+        if not self.enabled:
+            color = (180, 180, 180)  # Gray for disabled
+        elif self.hovered:
+            color = BUTTON_HOVER
+        else:
+            color = self.color
+
         pygame.draw.rect(screen, color, self.rect, border_radius=5)
         pygame.draw.rect(screen, BLACK, self.rect, 2, border_radius=5)
 
@@ -179,13 +197,14 @@ class Button:
         Handle pygame event.
 
         Returns:
-            True if event was consumed
+            True if event was consumed (button clicked)
         """
         if event.type == pygame.MOUSEMOTION:
             self.hovered = self.rect.collidepoint(event.pos)
         elif event.type == pygame.MOUSEBUTTONDOWN:
-            if self.rect.collidepoint(event.pos):
-                self.callback()
+            if self.enabled and self.rect.collidepoint(event.pos):
+                if self.callback:
+                    self.callback()
                 return True
         return False
 
