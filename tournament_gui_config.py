@@ -7,6 +7,7 @@ import chess
 import sys
 import threading
 import time
+import importlib
 from typing import Optional, Dict, Any, Tuple, List
 from game_recorder import GameRecorder
 from gui_utils import (
