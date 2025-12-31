@@ -6,13 +6,35 @@ Designed for competitive play.
 
 import chess
 import time
+from typing import Optional
+from dataclasses import dataclass
 from collections import defaultdict
-from engine_base import (
-    SearchResult, TTEntry, TT_EXACT, TT_ALPHA, TT_BETA,
-    INFINITY, MATE_SCORE, TT_SIZE, CENTER, EXTENDED_CENTER,
-    PASSED_PAWN_BONUS, get_game_phase
-)
-from engine_pst import get_pst_value
+
+
+@dataclass
+class SearchResult:
+    """Result from engine search."""
+    best_move: chess.Move
+    score: int
+    depth: int
+    nodes_searched: int
+    time_spent: float
+
+
+# Transposition table entry types
+TT_EXACT = 0
+TT_ALPHA = 1
+TT_BETA = 2
+
+
+@dataclass
+class TTEntry:
+    """Transposition table entry."""
+    key: int
+    depth: int
+    score: int
+    flag: int
+    best_move: Optional[chess.Move]
 
 
 class ChessEngine:
@@ -50,6 +72,112 @@ class ChessEngine:
         chess.ROOK: 2,
         chess.QUEEN: 1,
     }
+
+    # Center squares
+    CENTER = [chess.D4, chess.E4, chess.D5, chess.E5]
+    EXTENDED_CENTER = [
+        chess.C3, chess.D3, chess.E3, chess.F3,
+        chess.C4, chess.D4, chess.E4, chess.F4,
+        chess.C5, chess.D5, chess.E5, chess.F5,
+        chess.C6, chess.D6, chess.E6, chess.F6,
+    ]
+
+    # Piece-square tables
+    PAWN_TABLE_MG = [
+         0,  0,  0,  0,  0,  0,  0,  0,
+        60, 60, 60, 65, 65, 60, 60, 60,
+        20, 25, 35, 45, 45, 35, 25, 20,
+        10, 12, 22, 35, 35, 22, 12, 10,
+         5,  8, 15, 28, 28, 15,  8,  5,
+         3,  5,  5, 15, 15,  5,  5,  3,
+         5, 10,  0,-15,-15,  0, 10,  5,
+         0,  0,  0,  0,  0,  0,  0,  0,
+    ]
+
+    PAWN_TABLE_EG = [
+         0,  0,  0,  0,  0,  0,  0,  0,
+        80, 80, 80, 80, 80, 80, 80, 80,
+        50, 50, 50, 50, 50, 50, 50, 50,
+        30, 30, 30, 30, 30, 30, 30, 30,
+        15, 15, 15, 15, 15, 15, 15, 15,
+         5,  5,  5,  5,  5,  5,  5,  5,
+         0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,
+    ]
+
+    KNIGHT_TABLE = [
+        -50,-40,-30,-30,-30,-30,-40,-50,
+        -40,-20,  0,  5,  5,  0,-20,-40,
+        -30,  5, 15, 20, 20, 15,  5,-30,
+        -30, 10, 20, 25, 25, 20, 10,-30,
+        -30, 10, 20, 25, 25, 20, 10,-30,
+        -30,  5, 15, 20, 20, 15,  5,-30,
+        -40,-20,  0,  5,  5,  0,-20,-40,
+        -50,-40,-30,-30,-30,-30,-40,-50,
+    ]
+
+    BISHOP_TABLE = [
+        -20,-10,-10,-10,-10,-10,-10,-20,
+        -10,  5,  0,  0,  0,  0,  5,-10,
+        -10, 10, 10, 10, 10, 10, 10,-10,
+        -10,  0, 15, 15, 15, 15,  0,-10,
+        -10,  5, 15, 15, 15, 15,  5,-10,
+        -10,  0, 10, 15, 15, 10,  0,-10,
+        -10,  0,  0,  0,  0,  0,  0,-10,
+        -20,-10,-10,-10,-10,-10,-10,-20,
+    ]
+
+    ROOK_TABLE = [
+        10, 10, 10, 10, 10, 10, 10, 10,
+        15, 20, 20, 20, 20, 20, 20, 15,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+         0,  0,  5, 10, 10,  5,  0,  0,
+    ]
+
+    QUEEN_TABLE = [
+        -20,-10,-10, -5, -5,-10,-10,-20,
+        -10,  0,  0,  0,  0,  0,  0,-10,
+        -10,  0,  5,  5,  5,  5,  0,-10,
+         -5,  0,  5,  5,  5,  5,  0, -5,
+         -5,  0,  5,  5,  5,  5,  0, -5,
+        -10,  0,  5,  5,  5,  5,  0,-10,
+        -10,  0,  0,  0,  0,  0,  0,-10,
+        -20,-10,-10, -5, -5,-10,-10,-20,
+    ]
+
+    KING_TABLE_MG = [
+        -40,-40,-40,-50,-50,-40,-40,-40,
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -20,-30,-30,-40,-40,-30,-30,-20,
+        -10,-20,-20,-30,-30,-20,-20,-10,
+        -10,-15,-15,-20,-20,-15,-15,-10,
+          0,  0, -5,-10,-10, -5,  0,  0,
+         15, 15,  0, -5, -5,  0, 15, 15,
+         20, 35, 15,  0,  0, 15, 35, 20,
+    ]
+
+    KING_TABLE_EG = [
+        -50,-30,-20,-10,-10,-20,-30,-50,
+        -30,-10,  0, 10, 10,  0,-10,-30,
+        -20,  0, 20, 30, 30, 20,  0,-20,
+        -10, 10, 30, 40, 40, 30, 10,-10,
+        -10, 10, 30, 40, 40, 30, 10,-10,
+        -20,  0, 20, 30, 30, 20,  0,-20,
+        -30,-10,  0, 10, 10,  0,-10,-30,
+        -50,-30,-20,-10,-10,-20,-30,-50,
+    ]
+
+    # Passed pawn bonus by rank
+    PASSED_PAWN_BONUS = [0, 15, 25, 40, 60, 90, 130, 0]
+
+    # Constants
+    INFINITY = 999999
+    MATE_SCORE = 100000
+    TT_SIZE = 1 << 20
 
     def __init__(self, max_depth: int = 6, time_limit: float = None):
         self.max_depth = max_depth
