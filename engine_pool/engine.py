@@ -6,35 +6,13 @@ Designed for competitive play.
 
 import chess
 import time
-from typing import Optional
-from dataclasses import dataclass
 from collections import defaultdict
-
-
-@dataclass
-class SearchResult:
-    """Result from engine search."""
-    best_move: chess.Move
-    score: int
-    depth: int
-    nodes_searched: int
-    time_spent: float
-
-
-# Transposition table entry types
-TT_EXACT = 0
-TT_ALPHA = 1
-TT_BETA = 2
-
-
-@dataclass
-class TTEntry:
-    """Transposition table entry."""
-    key: int
-    depth: int
-    score: int
-    flag: int
-    best_move: Optional[chess.Move]
+from engine_base import (
+    SearchResult, TTEntry, TT_EXACT, TT_ALPHA, TT_BETA,
+    INFINITY, MATE_SCORE, TT_SIZE, CENTER, EXTENDED_CENTER,
+    PASSED_PAWN_BONUS, get_game_phase
+)
+from engine_pst import get_pst_value
 
 
 class ChessEngine:
@@ -73,112 +51,6 @@ class ChessEngine:
         chess.QUEEN: 1,
     }
 
-    # Center squares
-    CENTER = [chess.D4, chess.E4, chess.D5, chess.E5]
-    EXTENDED_CENTER = [
-        chess.C3, chess.D3, chess.E3, chess.F3,
-        chess.C4, chess.D4, chess.E4, chess.F4,
-        chess.C5, chess.D5, chess.E5, chess.F5,
-        chess.C6, chess.D6, chess.E6, chess.F6,
-    ]
-
-    # Piece-square tables
-    PAWN_TABLE_MG = [
-         0,  0,  0,  0,  0,  0,  0,  0,
-        60, 60, 60, 65, 65, 60, 60, 60,
-        20, 25, 35, 45, 45, 35, 25, 20,
-        10, 12, 22, 35, 35, 22, 12, 10,
-         5,  8, 15, 28, 28, 15,  8,  5,
-         3,  5,  5, 15, 15,  5,  5,  3,
-         5, 10,  0,-15,-15,  0, 10,  5,
-         0,  0,  0,  0,  0,  0,  0,  0,
-    ]
-
-    PAWN_TABLE_EG = [
-         0,  0,  0,  0,  0,  0,  0,  0,
-        80, 80, 80, 80, 80, 80, 80, 80,
-        50, 50, 50, 50, 50, 50, 50, 50,
-        30, 30, 30, 30, 30, 30, 30, 30,
-        15, 15, 15, 15, 15, 15, 15, 15,
-         5,  5,  5,  5,  5,  5,  5,  5,
-         0,  0,  0,  0,  0,  0,  0,  0,
-         0,  0,  0,  0,  0,  0,  0,  0,
-    ]
-
-    KNIGHT_TABLE = [
-        -50,-40,-30,-30,-30,-30,-40,-50,
-        -40,-20,  0,  5,  5,  0,-20,-40,
-        -30,  5, 15, 20, 20, 15,  5,-30,
-        -30, 10, 20, 25, 25, 20, 10,-30,
-        -30, 10, 20, 25, 25, 20, 10,-30,
-        -30,  5, 15, 20, 20, 15,  5,-30,
-        -40,-20,  0,  5,  5,  0,-20,-40,
-        -50,-40,-30,-30,-30,-30,-40,-50,
-    ]
-
-    BISHOP_TABLE = [
-        -20,-10,-10,-10,-10,-10,-10,-20,
-        -10,  5,  0,  0,  0,  0,  5,-10,
-        -10, 10, 10, 10, 10, 10, 10,-10,
-        -10,  0, 15, 15, 15, 15,  0,-10,
-        -10,  5, 15, 15, 15, 15,  5,-10,
-        -10,  0, 10, 15, 15, 10,  0,-10,
-        -10,  0,  0,  0,  0,  0,  0,-10,
-        -20,-10,-10,-10,-10,-10,-10,-20,
-    ]
-
-    ROOK_TABLE = [
-        10, 10, 10, 10, 10, 10, 10, 10,
-        15, 20, 20, 20, 20, 20, 20, 15,
-        -5,  0,  0,  0,  0,  0,  0, -5,
-        -5,  0,  0,  0,  0,  0,  0, -5,
-        -5,  0,  0,  0,  0,  0,  0, -5,
-        -5,  0,  0,  0,  0,  0,  0, -5,
-        -5,  0,  0,  0,  0,  0,  0, -5,
-         0,  0,  5, 10, 10,  5,  0,  0,
-    ]
-
-    QUEEN_TABLE = [
-        -20,-10,-10, -5, -5,-10,-10,-20,
-        -10,  0,  0,  0,  0,  0,  0,-10,
-        -10,  0,  5,  5,  5,  5,  0,-10,
-         -5,  0,  5,  5,  5,  5,  0, -5,
-         -5,  0,  5,  5,  5,  5,  0, -5,
-        -10,  0,  5,  5,  5,  5,  0,-10,
-        -10,  0,  0,  0,  0,  0,  0,-10,
-        -20,-10,-10, -5, -5,-10,-10,-20,
-    ]
-
-    KING_TABLE_MG = [
-        -40,-40,-40,-50,-50,-40,-40,-40,
-        -30,-40,-40,-50,-50,-40,-40,-30,
-        -20,-30,-30,-40,-40,-30,-30,-20,
-        -10,-20,-20,-30,-30,-20,-20,-10,
-        -10,-15,-15,-20,-20,-15,-15,-10,
-          0,  0, -5,-10,-10, -5,  0,  0,
-         15, 15,  0, -5, -5,  0, 15, 15,
-         20, 35, 15,  0,  0, 15, 35, 20,
-    ]
-
-    KING_TABLE_EG = [
-        -50,-30,-20,-10,-10,-20,-30,-50,
-        -30,-10,  0, 10, 10,  0,-10,-30,
-        -20,  0, 20, 30, 30, 20,  0,-20,
-        -10, 10, 30, 40, 40, 30, 10,-10,
-        -10, 10, 30, 40, 40, 30, 10,-10,
-        -20,  0, 20, 30, 30, 20,  0,-20,
-        -30,-10,  0, 10, 10,  0,-10,-30,
-        -50,-30,-20,-10,-10,-20,-30,-50,
-    ]
-
-    # Passed pawn bonus by rank
-    PASSED_PAWN_BONUS = [0, 15, 25, 40, 60, 90, 130, 0]
-
-    # Constants
-    INFINITY = 999999
-    MATE_SCORE = 100000
-    TT_SIZE = 1 << 20
-
     def __init__(self, max_depth: int = 6, time_limit: float = None):
         self.max_depth = max_depth
         self.time_limit = time_limit
@@ -193,42 +65,6 @@ class ChessEngine:
         self.tt.clear()
         self.killers = [[None, None] for _ in range(64)]
         self.history.clear()
-
-    def get_game_phase(self, board: chess.Board) -> float:
-        """0.0 = opening/middlegame, 1.0 = endgame"""
-        phase = 0
-        phase += len(board.pieces(chess.KNIGHT, chess.WHITE)) * 1
-        phase += len(board.pieces(chess.KNIGHT, chess.BLACK)) * 1
-        phase += len(board.pieces(chess.BISHOP, chess.WHITE)) * 1
-        phase += len(board.pieces(chess.BISHOP, chess.BLACK)) * 1
-        phase += len(board.pieces(chess.ROOK, chess.WHITE)) * 2
-        phase += len(board.pieces(chess.ROOK, chess.BLACK)) * 2
-        phase += len(board.pieces(chess.QUEEN, chess.WHITE)) * 4
-        phase += len(board.pieces(chess.QUEEN, chess.BLACK)) * 4
-        return 1.0 - min(phase / 24.0, 1.0)
-
-    def get_pst_value(self, piece: chess.Piece, square: int, phase: float) -> int:
-        """Get piece-square table value with phase interpolation."""
-        sq = square if piece.color == chess.WHITE else chess.square_mirror(square)
-        pt = piece.piece_type
-
-        if pt == chess.PAWN:
-            mg = self.PAWN_TABLE_MG[sq]
-            eg = self.PAWN_TABLE_EG[sq]
-            return int(mg * (1 - phase) + eg * phase)
-        elif pt == chess.KNIGHT:
-            return self.KNIGHT_TABLE[sq]
-        elif pt == chess.BISHOP:
-            return self.BISHOP_TABLE[sq]
-        elif pt == chess.ROOK:
-            return self.ROOK_TABLE[sq]
-        elif pt == chess.QUEEN:
-            return self.QUEEN_TABLE[sq]
-        elif pt == chess.KING:
-            mg = self.KING_TABLE_MG[sq]
-            eg = self.KING_TABLE_EG[sq]
-            return int(mg * (1 - phase) + eg * phase)
-        return 0
 
     def evaluate_development(self, board: chess.Board, phase: float) -> int:
         """Evaluate piece development (important in opening/early middlegame)."""
@@ -320,7 +156,7 @@ class ChessEngine:
         score = 0
 
         # Pawns in center
-        for sq in self.CENTER:
+        for sq in CENTER:
             piece = board.piece_at(sq)
             if piece and piece.piece_type == chess.PAWN:
                 bonus = 25 if piece.color == chess.WHITE else -25
@@ -331,12 +167,12 @@ class ChessEngine:
             sign = 1 if color == chess.WHITE else -1
             attacks_center = 0
 
-            for sq in self.CENTER:
+            for sq in CENTER:
                 attackers = board.attackers(color, sq)
                 attacks_center += len(attackers) * 5
 
-            for sq in self.EXTENDED_CENTER:
-                if sq not in self.CENTER:
+            for sq in EXTENDED_CENTER:
+                if sq not in CENTER:
                     attackers = board.attackers(color, sq)
                     attacks_center += len(attackers) * 2
 
@@ -426,7 +262,7 @@ class ChessEngine:
 
                 if is_passed:
                     bonus_rank = rank if color == chess.WHITE else 7 - rank
-                    base_bonus = self.PASSED_PAWN_BONUS[bonus_rank]
+                    base_bonus = PASSED_PAWN_BONUS[bonus_rank]
                     # Extra bonus in endgame
                     bonus = int(base_bonus * (1 + phase * 0.5))
                     score += sign * bonus
@@ -629,7 +465,7 @@ class ChessEngine:
     def evaluate(self, board: chess.Board) -> int:
         """Full position evaluation."""
         if board.is_checkmate():
-            return -self.MATE_SCORE
+            return -MATE_SCORE
 
         if board.is_stalemate() or board.is_insufficient_material():
             return 0
@@ -637,7 +473,7 @@ class ChessEngine:
         if board.is_fifty_moves() or board.is_repetition(2):
             return 0
 
-        phase = self.get_game_phase(board)
+        phase = get_game_phase(board)
         score = 0
 
         # Material and piece-square tables
@@ -645,7 +481,7 @@ class ChessEngine:
             piece = board.piece_at(square)
             if piece:
                 value = self.PIECE_VALUES[piece.piece_type]
-                value += self.get_pst_value(piece, square, phase)
+                value += get_pst_value(piece, square, phase)
                 if piece.color == chess.WHITE:
                     score += value
                 else:
@@ -785,7 +621,7 @@ class ChessEngine:
         in_check = board.is_check()
 
         # Null move pruning
-        if do_null and depth >= 3 and not in_check and self.get_game_phase(board) < 0.8:
+        if do_null and depth >= 3 and not in_check and get_game_phase(board) < 0.8:
             has_pieces = any(board.pieces(pt, board.turn) for pt in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN])
             if has_pieces:
                 board.push(chess.Move.null())
@@ -799,12 +635,12 @@ class ChessEngine:
 
         moves = list(board.legal_moves)
         if not moves:
-            return -self.MATE_SCORE + ply if in_check else 0
+            return -MATE_SCORE + ply if in_check else 0
 
         moves = self.order_moves(board, moves, ply, tt_move)
 
         best_move = moves[0]
-        best_score = -self.INFINITY
+        best_score = -INFINITY
         flag = TT_ALPHA
 
         for i, move in enumerate(moves):
@@ -844,7 +680,7 @@ class ChessEngine:
                 flag = TT_BETA
                 break
 
-        if len(self.tt) < self.TT_SIZE:
+        if len(self.tt) < TT_SIZE:
             self.tt[key] = TTEntry(key, depth, best_score, flag, best_move)
         elif key in self.tt and depth >= self.tt[key].depth:
             self.tt[key] = TTEntry(key, depth, best_score, flag, best_move)
@@ -864,7 +700,7 @@ class ChessEngine:
             return None
 
         best_move = moves[0]
-        best_score = -self.INFINITY
+        best_score = -INFINITY
         final_depth = 1
 
         for current_depth in range(1, depth + 1):
@@ -872,9 +708,9 @@ class ChessEngine:
                 break
 
             current_best_move = None
-            current_best_score = -self.INFINITY
-            alpha = -self.INFINITY
-            beta = self.INFINITY
+            current_best_score = -INFINITY
+            alpha = -INFINITY
+            beta = INFINITY
 
             tt_entry = self.tt.get(board._transposition_key())
             tt_move = tt_entry.best_move if tt_entry else None

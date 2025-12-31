@@ -212,15 +212,15 @@ class ChessEngine:
         self.time_exceeded = False
 
         best_move = None
-        best_score = -self.INFINITY
+        best_score = -INFINITY
 
         # Iterative deepening
         for d in range(1, depth + 1):
             if self.time_exceeded:
                 break
 
-            alpha = -self.INFINITY
-            beta = self.INFINITY
+            alpha = -INFINITY
+            beta = INFINITY
 
             # Search all moves
             moves = self.order_moves(board, None, 0)
@@ -259,7 +259,7 @@ class ChessEngine:
         # Terminal conditions
         if board.is_game_over():
             if board.is_checkmate():
-                return -self.MATE_SCORE + ply
+                return -MATE_SCORE + ply
             return 0
 
         if depth <= 0:
@@ -321,7 +321,7 @@ class ChessEngine:
     def evaluate(self, board: chess.Board) -> int:
         """Enhanced evaluation - v5 strength with FAST speed."""
         if board.is_checkmate():
-            return -self.MATE_SCORE
+            return -MATE_SCORE
         if board.is_stalemate():
             return 0
 

@@ -4,8 +4,8 @@ Benchmark script to compare engine performance.
 
 import chess
 import time
-from engine_v5_fast import ChessEngine as EngineFast
-from engine_v5_optimized import ChessEngine as EngineOptimized
+from engine_pool.engine_v5_fast import ChessEngine as EngineFast
+from engine_pool.engine_v5_optimized import ChessEngine as EngineOptimized
 
 
 def benchmark_engine(engine_class, name, positions, time_limit=3):
