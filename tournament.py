@@ -19,7 +19,11 @@ class TournamentRunner:
                  time_limit: Optional[float] = None,
                  num_games: int = 100,
                  output_dir: str = "games",
-                 quiet: bool = False):
+                 quiet: bool = False,
+                 elo1: Optional[int] = None,
+                 elo2: Optional[int] = None,
+                 random_level1: Optional[float] = None,
+                 random_level2: Optional[float] = None):
         """
         Initialize tournament runner.
 
@@ -32,6 +36,10 @@ class TournamentRunner:
             num_games: Number of games to play
             output_dir: Directory for saving games
             quiet: Minimize output
+            elo1: ELO rating for engine 1 (1320-3190, None = full strength)
+            elo2: ELO rating for engine 2 (1320-3190, None = full strength)
+            random_level1: Randomness level for engine 1 (0-1, 0 = deterministic, 1 = high randomness)
+            random_level2: Randomness level for engine 2 (0-1, 0 = deterministic, 1 = high randomness)
         """
         self.engine1_module = engine1_module
         self.engine2_module = engine2_module
@@ -40,24 +48,44 @@ class TournamentRunner:
         self.time_limit = time_limit
         self.num_games = num_games
         self.quiet = quiet
+        self.elo1 = elo1
+        self.elo2 = elo2
+
+        # Create descriptive names for engines (include ELO/randomness if specified)
+        self.engine1_display_name = self._create_engine_name(engine1_module, elo1, random_level1)
+        self.engine2_display_name = self._create_engine_name(engine2_module, elo2, random_level2)
 
         # Load engines
-        print(f"Loading engines: {engine1_module} vs {engine2_module}...")
+        print(f"Loading engines: {self.engine1_display_name} vs {self.engine2_display_name}...")
         mod1 = importlib.import_module(engine1_module)
         mod2 = importlib.import_module(engine2_module)
 
-        self.engine1 = mod1.ChessEngine(max_depth=depth1, time_limit=time_limit)
-        self.engine2 = mod2.ChessEngine(max_depth=depth2, time_limit=time_limit)
+        # Prepare engine 1 kwargs
+        engine1_kwargs = {'max_depth': depth1, 'time_limit': time_limit}
+        if elo1 is not None:
+            engine1_kwargs['elo_rating'] = elo1
+        if random_level1 is not None:
+            engine1_kwargs['randomness_config'] = self._random_level_to_config(random_level1)
+
+        # Prepare engine 2 kwargs
+        engine2_kwargs = {'max_depth': depth2, 'time_limit': time_limit}
+        if elo2 is not None:
+            engine2_kwargs['elo_rating'] = elo2
+        if random_level2 is not None:
+            engine2_kwargs['randomness_config'] = self._random_level_to_config(random_level2)
+
+        self.engine1 = mod1.ChessEngine(**engine1_kwargs)
+        self.engine2 = mod2.ChessEngine(**engine2_kwargs)
 
         # Initialize recorder
         self.recorder = GameRecorder(output_dir)
 
         # Statistics
         self.stats = {
-            "engine1": {"name": engine1_module, "wins": 0, "draws": 0, "losses": 0,
+            "engine1": {"name": self.engine1_display_name, "wins": 0, "draws": 0, "losses": 0,
                        "wins_as_white": 0, "wins_as_black": 0,
                        "total_time": 0, "total_nodes": 0, "total_moves": 0},
-            "engine2": {"name": engine2_module, "wins": 0, "draws": 0, "losses": 0,
+            "engine2": {"name": self.engine2_display_name, "wins": 0, "draws": 0, "losses": 0,
                        "wins_as_white": 0, "wins_as_black": 0,
                        "total_time": 0, "total_nodes": 0, "total_moves": 0},
             "games": [],
@@ -66,6 +94,74 @@ class TournamentRunner:
             "shortest_game": float('inf'),
             "timeouts": 0,
             "errors": 0
+        }
+
+    @staticmethod
+    def _create_engine_name(module_name: str, elo: Optional[int], random_level: Optional[float]) -> str:
+        """
+        Create descriptive engine name including ELO and randomness.
+
+        Args:
+            module_name: Engine module name
+            elo: ELO rating (or None)
+            random_level: Randomness level (or None)
+
+        Returns:
+            Descriptive name like "stockfishSonChessEngine_ELO1800_R0.5"
+        """
+        # Start with base module name (strip 'engine_pool.' prefix if present)
+        base_name = module_name.replace('engine_pool.', '')
+
+        # Add ELO if specified
+        if elo is not None:
+            base_name += f"_ELO{elo}"
+
+        # Add randomness if specified
+        if random_level is not None and random_level > 0:
+            base_name += f"_R{random_level:.2f}"
+
+        return base_name
+
+    @staticmethod
+    def _random_level_to_config(random_level: float) -> dict:
+        """
+        Convert random_level (0-1) to randomness_config dict.
+
+        Args:
+            random_level: Randomness level (0 = deterministic, 1 = high randomness)
+
+        Returns:
+            Dictionary with randomness configuration
+
+        Examples:
+            0.0 -> disabled
+            0.5 -> (0.7, 0.2, 0.1) - moderate randomness
+            1.0 -> (0.4, 0.35, 0.25) - high randomness
+        """
+        if random_level <= 0:
+            return {'enabled': False}
+
+        # Linear interpolation for randomness weights
+        # Low random (0-0.5): gradually increase from deterministic to moderate
+        # High random (0.5-1.0): transition from moderate to high randomness
+        if random_level <= 0.5:
+            # Scale from (1.0, 0, 0) at 0 to (0.7, 0.2, 0.1) at 0.5
+            t = random_level / 0.5
+            best_weight = 1.0 - (0.3 * t)
+            second_weight = 0.2 * t
+            third_weight = 0.1 * t
+        else:
+            # Scale from (0.7, 0.2, 0.1) at 0.5 to (0.4, 0.35, 0.25) at 1.0
+            t = (random_level - 0.5) / 0.5
+            best_weight = 0.7 - (0.3 * t)
+            second_weight = 0.2 + (0.15 * t)
+            third_weight = 0.1 + (0.15 * t)
+
+        return {
+            'enabled': True,
+            'best_move_weight': round(best_weight, 2),
+            'second_move_weight': round(second_weight, 2),
+            'third_move_weight': round(third_weight, 2)
         }
 
     def play_game(self, game_number: int, engine1_is_white: bool) -> Dict[str, Any]:
@@ -84,8 +180,8 @@ class TournamentRunner:
         # Determine which engine plays which color
         white_engine = self.engine1 if engine1_is_white else self.engine2
         black_engine = self.engine2 if engine1_is_white else self.engine1
-        white_name = self.engine1_module if engine1_is_white else self.engine2_module
-        black_name = self.engine2_module if engine1_is_white else self.engine1_module
+        white_name = self.engine1_display_name if engine1_is_white else self.engine2_display_name
+        black_name = self.engine2_display_name if engine1_is_white else self.engine1_display_name
 
         # Game statistics
         white_times = []
@@ -289,17 +385,19 @@ class TournamentRunner:
     def run_tournament(self):
         """Run the complete tournament."""
         print("\n" + "=" * 70)
-        print(f"TOURNAMENT: {self.engine1_module} vs {self.engine2_module}")
+        print(f"TOURNAMENT: {self.engine1_display_name} vs {self.engine2_display_name}")
         print("=" * 70)
         print(f"Games: {self.num_games}")
         print(f"Depth: {self.depth1} vs {self.depth2}")
         if self.time_limit:
             print(f"Time limit: {self.time_limit}s per move")
+        if self.elo1 or self.elo2:
+            print(f"ELO: {self.elo1 or 'full'} vs {self.elo2 or 'full'}")
         print("=" * 70 + "\n")
 
         # Start match recording
         self.recorder.start_match(
-            self.engine1_module, self.engine2_module,
+            self.engine1_display_name, self.engine2_display_name,
             self.depth1, self.depth2, self.time_limit, self.num_games
         )
 
@@ -395,6 +493,10 @@ def main():
     parser.add_argument("--depth1", type=int, default=5, help="Search depth for engine 1")
     parser.add_argument("--depth2", type=int, default=5, help="Search depth for engine 2")
     parser.add_argument("--time", type=float, default=None, help="Time limit per move (seconds)")
+    parser.add_argument("--elo1", type=int, default=None, help="ELO rating for engine 1 (1320-3190, None=full strength)")
+    parser.add_argument("--elo2", type=int, default=None, help="ELO rating for engine 2 (1320-3190, None=full strength)")
+    parser.add_argument("--random_level1", type=float, default=None, help="Randomness for engine 1 (0=deterministic, 1=high random)")
+    parser.add_argument("--random_level2", type=float, default=None, help="Randomness for engine 2 (0=deterministic, 1=high random)")
     parser.add_argument("--output-dir", default="games", help="Output directory for games")
     parser.add_argument("--quiet", action="store_true", help="Minimize output")
     parser.add_argument("--quick", action="store_true", help="Quick test (10 games)")
@@ -412,7 +514,9 @@ def main():
         time_limit=args.time,
         num_games=args.games,
         output_dir=args.output_dir,
-        quiet=args.quiet
+        quiet=args.quiet,
+        elo1=args.elo1, elo2=args.elo2,
+        random_level1=args.random_level1, random_level2=args.random_level2
     )
 
     tournament.run_tournament()
