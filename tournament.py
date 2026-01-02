@@ -16,12 +16,11 @@ class TournamentRunner:
 
     def __init__(self, engine1_module: str, engine2_module: str,
                  depth1: int = 5, depth2: int = 5,
-                 time_limit: Optional[float] = None,
+                 time1: Optional[float] = None,
+                 time2: Optional[float] = None,
                  num_games: int = 100,
                  output_dir: str = "games",
                  quiet: bool = False,
-                 elo1: Optional[int] = None,
-                 elo2: Optional[int] = None,
                  random_level1: Optional[float] = None,
                  random_level2: Optional[float] = None):
         """
@@ -30,30 +29,30 @@ class TournamentRunner:
         Args:
             engine1_module: Module name for engine 1 (e.g., "engine_v3")
             engine2_module: Module name for engine 2 (e.g., "engine_v4")
-            depth1: Search depth for engine 1
-            depth2: Search depth for engine 2
-            time_limit: Time limit per move in seconds
+            depth1: Search depth for engine 1 (used with randomness mode)
+            depth2: Search depth for engine 2 (used with randomness mode)
+            time1: Time per move for engine 1 in seconds (time-based mode)
+            time2: Time per move for engine 2 in seconds (time-based mode)
             num_games: Number of games to play
             output_dir: Directory for saving games
             quiet: Minimize output
-            elo1: ELO rating for engine 1 (1320-3190, None = full strength)
-            elo2: ELO rating for engine 2 (1320-3190, None = full strength)
-            random_level1: Randomness level for engine 1 (0-1, 0 = deterministic, 1 = high randomness)
-            random_level2: Randomness level for engine 2 (0-1, 0 = deterministic, 1 = high randomness)
+            random_level1: Randomness level for engine 1 (0-1, uses depth-based search)
+            random_level2: Randomness level for engine 2 (0-1, uses depth-based search)
         """
         self.engine1_module = engine1_module
         self.engine2_module = engine2_module
         self.depth1 = depth1
         self.depth2 = depth2
-        self.time_limit = time_limit
+        self.time1 = time1
+        self.time2 = time2
+        self.random_level1 = random_level1
+        self.random_level2 = random_level2
         self.num_games = num_games
         self.quiet = quiet
-        self.elo1 = elo1
-        self.elo2 = elo2
 
-        # Create descriptive names for engines (include ELO/randomness if specified)
-        self.engine1_display_name = self._create_engine_name(engine1_module, elo1, random_level1)
-        self.engine2_display_name = self._create_engine_name(engine2_module, elo2, random_level2)
+        # Create descriptive names for engines (include time/randomness if specified)
+        self.engine1_display_name = self._create_engine_name(engine1_module, time1, random_level1, depth1)
+        self.engine2_display_name = self._create_engine_name(engine2_module, time2, random_level2, depth2)
 
         # Load engines
         print(f"Loading engines: {self.engine1_display_name} vs {self.engine2_display_name}...")
@@ -61,16 +60,16 @@ class TournamentRunner:
         mod2 = importlib.import_module(engine2_module)
 
         # Prepare engine 1 kwargs
-        engine1_kwargs = {'max_depth': depth1, 'time_limit': time_limit}
-        if elo1 is not None:
-            engine1_kwargs['elo_rating'] = elo1
+        engine1_kwargs = {'max_depth': depth1}
+        if time1 is not None:
+            engine1_kwargs['time_limit'] = time1
         if random_level1 is not None:
             engine1_kwargs['randomness_config'] = self._random_level_to_config(random_level1)
 
         # Prepare engine 2 kwargs
-        engine2_kwargs = {'max_depth': depth2, 'time_limit': time_limit}
-        if elo2 is not None:
-            engine2_kwargs['elo_rating'] = elo2
+        engine2_kwargs = {'max_depth': depth2}
+        if time2 is not None:
+            engine2_kwargs['time_limit'] = time2
         if random_level2 is not None:
             engine2_kwargs['randomness_config'] = self._random_level_to_config(random_level2)
 
@@ -97,28 +96,34 @@ class TournamentRunner:
         }
 
     @staticmethod
-    def _create_engine_name(module_name: str, elo: Optional[int], random_level: Optional[float]) -> str:
+    def _create_engine_name(module_name: str, time_limit: Optional[float], random_level: Optional[float], depth: int) -> str:
         """
-        Create descriptive engine name including ELO and randomness.
+        Create descriptive engine name including time/randomness/depth.
 
         Args:
             module_name: Engine module name
-            elo: ELO rating (or None)
+            time_limit: Time per move in seconds (or None)
             random_level: Randomness level (or None)
+            depth: Search depth
 
         Returns:
-            Descriptive name like "stockfishSonChessEngine_ELO1800_R0.5"
+            Descriptive name like "stockfishSonChessEngine_T0.5" or "stockfishSonChessEngine_D10_R0.5"
         """
         # Start with base module name (strip 'engine_pool.' prefix if present)
         base_name = module_name.replace('engine_pool.', '')
 
-        # Add ELO if specified
-        if elo is not None:
-            base_name += f"_ELO{elo}"
+        # Add time if specified (time-based mode) - use milliseconds to avoid decimal points in filenames
+        if time_limit is not None:
+            time_ms = int(time_limit * 1000)
+            base_name += f"_T{time_ms}ms"
+        else:
+            # Add depth for depth-based mode
+            base_name += f"_D{depth}"
 
-        # Add randomness if specified
+        # Add randomness if specified - use integer percentage to avoid decimal points
         if random_level is not None and random_level > 0:
-            base_name += f"_R{random_level:.2f}"
+            random_pct = int(random_level * 100)
+            base_name += f"_R{random_pct}"
 
         return base_name
 
@@ -388,18 +393,45 @@ class TournamentRunner:
         print(f"TOURNAMENT: {self.engine1_display_name} vs {self.engine2_display_name}")
         print("=" * 70)
         print(f"Games: {self.num_games}")
-        print(f"Depth: {self.depth1} vs {self.depth2}")
-        if self.time_limit:
-            print(f"Time limit: {self.time_limit}s per move")
-        if self.elo1 or self.elo2:
-            print(f"ELO: {self.elo1 or 'full'} vs {self.elo2 or 'full'}")
+        print("-" * 70)
+
+        # Engine 1 details
+        print(f"Engine 1: {self.engine1_display_name}")
+        if self.time1:
+            print(f"  Mode: TIME-BASED ({self.time1}s per move)")
+            print(f"  Behavior: Returns best move within time limit (no randomness)")
+        else:
+            print(f"  Mode: DEPTH-BASED (depth={self.depth1})")
+            if self.random_level1 and self.random_level1 > 0:
+                print(f"  Randomness: ENABLED (level={self.random_level1}, selects from top 3 moves)")
+            else:
+                print(f"  Randomness: DISABLED (always best move)")
+
+        print("-" * 70)
+
+        # Engine 2 details
+        print(f"Engine 2: {self.engine2_display_name}")
+        if self.time2:
+            print(f"  Mode: TIME-BASED ({self.time2}s per move)")
+            print(f"  Behavior: Returns best move within time limit (no randomness)")
+        else:
+            print(f"  Mode: DEPTH-BASED (depth={self.depth2})")
+            if self.random_level2 and self.random_level2 > 0:
+                print(f"  Randomness: ENABLED (level={self.random_level2}, selects from top 3 moves)")
+            else:
+                print(f"  Randomness: DISABLED (always best move)")
+
         print("=" * 70 + "\n")
 
         # Start match recording
+        time_for_recorder = self.time1 or self.time2  # Use either time for recording
         self.recorder.start_match(
             self.engine1_display_name, self.engine2_display_name,
-            self.depth1, self.depth2, self.time_limit, self.num_games
+            self.depth1, self.depth2, time_for_recorder, self.num_games
         )
+
+        # Show output directory
+        print(f"Output: {self.recorder.get_match_dir()}\n")
 
         start_time = time.time()
 
@@ -427,60 +459,61 @@ class TournamentRunner:
 
     def display_results(self, total_time: float):
         """Display tournament results."""
-        print("\n" + "╔" + "=" * 68 + "╗")
-        print(f"║{'MATCH RESULTS':^68}║")
-        print("╠" + "=" * 68 + "╣")
-        print(f"║ Configuration:{' ' * 54}║")
-        print(f"║   Games Played: {self.num_games:>6}{' ' * 45}║")
-        print(f"║   Time Control: {f'{self.time_limit}s per move' if self.time_limit else 'depth-based':>20}{' ' * 31}║")
-        print(f"║   Depth: {self.depth1} vs {self.depth2}{' ' * 51}║")
-        print("╠" + "=" * 68 + "╣")
-        print(f"║{'OVERALL RESULTS':^68}║")
-        print("╠" + "=" * 68 + "╣")
+        print("\n" + "+" + "=" * 68 + "+")
+        print(f"|{'MATCH RESULTS':^68}|")
+        print("+" + "=" * 68 + "+")
+        print(f"| Configuration:{' ' * 54}|")
+        print(f"|   Games Played: {self.num_games:>6}{' ' * 45}|")
+        time_str = f"E1:{self.time1}s E2:{self.time2}s" if (self.time1 or self.time2) else "depth-based"
+        print(f"|   Time Control: {time_str:>20}{' ' * 31}|")
+        print(f"|   Depth: {self.depth1} vs {self.depth2}{' ' * 51}|")
+        print("+" + "=" * 68 + "+")
+        print(f"|{'OVERALL RESULTS':^68}|")
+        print("+" + "=" * 68 + "+")
 
         e1 = self.stats["engine1"]
         e2 = self.stats["engine2"]
 
-        print(f"║ {e1['name']}: {e1['wins']:>3} wins | {e1['draws']:>3} draws | {e1['losses']:>3} losses{' ' * (33 - len(e1['name']))}║")
-        print(f"║ {e2['name']}: {e2['wins']:>3} wins | {e2['draws']:>3} draws | {e2['losses']:>3} losses{' ' * (33 - len(e2['name']))}║")
+        print(f"| {e1['name']}: {e1['wins']:>3} wins | {e1['draws']:>3} draws | {e1['losses']:>3} losses{' ' * (33 - len(e1['name']))}|")
+        print(f"| {e2['name']}: {e2['wins']:>3} wins | {e2['draws']:>3} draws | {e2['losses']:>3} losses{' ' * (33 - len(e2['name']))}|")
 
         score1 = e1['wins'] + 0.5 * e1['draws']
         score2 = e2['wins'] + 0.5 * e2['draws']
-        print(f"║{' ' * 68}║")
-        print(f"║ Score: {score1:.1f} - {score2:.1f}{' ' * 54}║")
+        print(f"|{' ' * 68}|")
+        print(f"| Score: {score1:.1f} - {score2:.1f}{' ' * 54}|")
 
-        print("╠" + "=" * 68 + "╣")
-        print(f"║{'GAME STATISTICS':^68}║")
-        print("╠" + "=" * 68 + "╣")
-        print(f"║ Average Game Length: {self.stats['total_moves'] / self.num_games:>6.1f} moves{' ' * 34}║")
-        print(f"║ Longest Game:  {self.stats['longest_game']:>6} moves{' ' * 40}║")
-        print(f"║ Shortest Game: {self.stats['shortest_game']:>6} moves{' ' * 40}║")
-        print(f"║ Decisive Games: {e1['wins'] + e2['wins']:>5}/{self.num_games} ({(e1['wins'] + e2['wins'])*100/self.num_games:.1f}%){' ' * 33}║")
-        print(f"║ Draws:          {e1['draws']:>5}/{self.num_games} ({e1['draws']*100/self.num_games:.1f}%){' ' * 33}║")
+        print("+" + "=" * 68 + "+")
+        print(f"|{'GAME STATISTICS':^68}|")
+        print("+" + "=" * 68 + "+")
+        print(f"| Average Game Length: {self.stats['total_moves'] / self.num_games:>6.1f} moves{' ' * 34}|")
+        print(f"| Longest Game:  {self.stats['longest_game']:>6} moves{' ' * 40}|")
+        print(f"| Shortest Game: {self.stats['shortest_game']:>6} moves{' ' * 40}|")
+        print(f"| Decisive Games: {e1['wins'] + e2['wins']:>5}/{self.num_games} ({(e1['wins'] + e2['wins'])*100/self.num_games:.1f}%){' ' * 33}|")
+        print(f"| Draws:          {e1['draws']:>5}/{self.num_games} ({e1['draws']*100/self.num_games:.1f}%){' ' * 33}|")
 
         if self.stats["errors"] > 0:
-            print(f"║ Errors:         {self.stats['errors']:>5}{' ' * 48}║")
+            print(f"| Errors:         {self.stats['errors']:>5}{' ' * 48}|")
 
-        print("╠" + "=" * 68 + "╣")
-        print(f"║{'PERFORMANCE METRICS':^68}║")
-        print("╠" + "=" * 68 + "╣")
+        print("+" + "=" * 68 + "+")
+        print(f"|{'PERFORMANCE METRICS':^68}|")
+        print("+" + "=" * 68 + "+")
 
         if e1["total_moves"] > 0:
             avg_time1 = e1["total_time"] / e1["total_moves"]
             avg_nodes1 = e1["total_nodes"] / e1["total_moves"]
-            print(f"║ {e1['name']} Avg Time/Move: {avg_time1:>6.2f}s{' ' * (38 - len(e1['name']))}║")
-            print(f"║ {e1['name']} Avg Nodes/Move: {avg_nodes1:>10,.0f}{' ' * (33 - len(e1['name']))}║")
+            print(f"| {e1['name']} Avg Time/Move: {avg_time1:>6.2f}s{' ' * (38 - len(e1['name']))}|")
+            print(f"| {e1['name']} Avg Nodes/Move: {avg_nodes1:>10,.0f}{' ' * (33 - len(e1['name']))}|")
 
         if e2["total_moves"] > 0:
             avg_time2 = e2["total_time"] / e2["total_moves"]
             avg_nodes2 = e2["total_nodes"] / e2["total_moves"]
-            print(f"║ {e2['name']} Avg Time/Move: {avg_time2:>6.2f}s{' ' * (38 - len(e2['name']))}║")
-            print(f"║ {e2['name']} Avg Nodes/Move: {avg_nodes2:>10,.0f}{' ' * (33 - len(e2['name']))}║")
+            print(f"| {e2['name']} Avg Time/Move: {avg_time2:>6.2f}s{' ' * (38 - len(e2['name']))}|")
+            print(f"| {e2['name']} Avg Nodes/Move: {avg_nodes2:>10,.0f}{' ' * (33 - len(e2['name']))}|")
 
-        print("╠" + "=" * 68 + "╣")
-        print(f"║ Total Time: {total_time/60:.1f} minutes{' ' * 45}║")
-        print(f"║ Games saved to: {str(self.recorder.get_match_dir())[:50]}{' ' * (17 - min(50, len(str(self.recorder.get_match_dir()))))}║")
-        print("╚" + "=" * 68 + "╝\n")
+        print("+" + "=" * 68 + "+")
+        print(f"| Total Time: {total_time/60:.1f} minutes{' ' * 45}|")
+        print(f"| Games saved to: {str(self.recorder.get_match_dir())[:50]}{' ' * (17 - min(50, len(str(self.recorder.get_match_dir()))))}|")
+        print("+" + "=" * 68 + "+\n")
 
 
 def main():
@@ -490,13 +523,12 @@ def main():
     parser.add_argument("--engine1", required=True, help="First engine module (e.g., engine_v3)")
     parser.add_argument("--engine2", required=True, help="Second engine module (e.g., engine_v4)")
     parser.add_argument("--games", type=int, default=100, help="Number of games to play")
-    parser.add_argument("--depth1", type=int, default=5, help="Search depth for engine 1")
-    parser.add_argument("--depth2", type=int, default=5, help="Search depth for engine 2")
-    parser.add_argument("--time", type=float, default=None, help="Time limit per move (seconds)")
-    parser.add_argument("--elo1", type=int, default=None, help="ELO rating for engine 1 (1320-3190, None=full strength)")
-    parser.add_argument("--elo2", type=int, default=None, help="ELO rating for engine 2 (1320-3190, None=full strength)")
-    parser.add_argument("--random_level1", type=float, default=None, help="Randomness for engine 1 (0=deterministic, 1=high random)")
-    parser.add_argument("--random_level2", type=float, default=None, help="Randomness for engine 2 (0=deterministic, 1=high random)")
+    parser.add_argument("--depth1", type=int, default=5, help="Search depth for engine 1 (used with randomness)")
+    parser.add_argument("--depth2", type=int, default=5, help="Search depth for engine 2 (used with randomness)")
+    parser.add_argument("--time1", type=float, default=None, help="Time per move for engine 1 (seconds)")
+    parser.add_argument("--time2", type=float, default=None, help="Time per move for engine 2 (seconds)")
+    parser.add_argument("--random_level1", type=float, default=None, help="Randomness for engine 1 (0-1, uses depth-based search)")
+    parser.add_argument("--random_level2", type=float, default=None, help="Randomness for engine 2 (0-1, uses depth-based search)")
     parser.add_argument("--output-dir", default="games", help="Output directory for games")
     parser.add_argument("--quiet", action="store_true", help="Minimize output")
     parser.add_argument("--quick", action="store_true", help="Quick test (10 games)")
@@ -511,11 +543,10 @@ def main():
     tournament = TournamentRunner(
         args.engine1, args.engine2,
         depth1=args.depth1, depth2=args.depth2,
-        time_limit=args.time,
+        time1=args.time1, time2=args.time2,
         num_games=args.games,
         output_dir=args.output_dir,
         quiet=args.quiet,
-        elo1=args.elo1, elo2=args.elo2,
         random_level1=args.random_level1, random_level2=args.random_level2
     )
 

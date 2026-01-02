@@ -1,25 +1,24 @@
 """
 Stockfish Son Chess Engine - Stockfish Wrapper for Tournament Play
 
-This engine wraps Stockfish to enable tournament play with adjustable strength
-and move randomness for generating diverse training data.
+This engine wraps Stockfish to enable tournament play with two modes:
+1. TIME-BASED: Uses get_best_move_time() for strict time control (no randomness)
+2. DEPTH-BASED: Uses get_top_moves() with optional randomness for training data
 
 Features:
-- Adjustable ELO rating (1320-3190)
-- Time control support
+- Time control support (strict enforcement via get_best_move_time)
 - Move randomness for diverse training data (select 2nd/3rd best moves)
 - Full tournament integration
 - Self-play support: Run Stockfish vs Stockfish with different configs
 - Training data generation: Create large datasets of varied games
 
 Usage Examples:
-    # Deterministic tournament play at 2400 ELO
-    engine = ChessEngine(max_depth=22, elo_rating=2400)
+    # Time-based mode (0.5 seconds per move, no randomness)
+    engine = ChessEngine(time_limit=0.5)
 
-    # Training data generation with randomness
+    # Depth-based with randomness (for training data)
     engine = ChessEngine(
-        max_depth=18,
-        elo_rating=1800,
+        max_depth=10,
         randomness_config={
             'enabled': True,
             'best_move_weight': 0.6,
@@ -28,20 +27,17 @@ Usage Examples:
         }
     )
 
-    # Time-controlled play
-    engine = ChessEngine(max_depth=20, time_limit=3.0, elo_rating=2200)
-
-    # Full strength Stockfish
-    engine = ChessEngine(max_depth=25, threads=4, hash_size=128)
+    # Depth-based without randomness (deterministic)
+    engine = ChessEngine(max_depth=15)
 
 Tournament Self-Play:
+    # Time-based engine vs depth-based with randomness
     python tournament.py \\
       --engine1 engine_pool.stockfishSonChessEngine \\
       --engine2 engine_pool.stockfishSonChessEngine \\
-      --games 100 \\
-      --depth1 18 \\
-      --depth2 22 \\
-      --time 2.0
+      --time1 0.5 \\
+      --depth2 10 --random_level2 0.7 \\
+      --games 100
 """
 
 import chess
@@ -52,9 +48,10 @@ import os
 from typing import Optional
 from dataclasses import dataclass
 
-# Add parent directory to path to import stockfish_analyzer
+# Add parent directory to path to import stockfish_analyzer and stockfish
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from stockfish_analyzer import StockfishAnalyzer
+from stockfish import Stockfish
 
 
 @dataclass
@@ -69,28 +66,26 @@ class SearchResult:
 
 class ChessEngine:
     """
-    Stockfish wrapper engine with ELO rating and randomness support.
+    Stockfish wrapper engine with two modes:
 
-    Wraps Stockfish for tournament play with the following capabilities:
-    - Adjustable strength via ELO rating or skill level
-    - Move randomness for generating diverse training games
-    - Time control support
-    - Full compatibility with tournament system
+    1. TIME-BASED MODE (when time_limit is set):
+       - Uses get_best_move_time() for strict time control
+       - Returns best move within the time limit
+       - No randomness (always best move)
+
+    2. DEPTH-BASED MODE (when time_limit is None):
+       - Uses get_top_moves() with specified depth
+       - Optional randomness to select from top 3 moves
+       - Good for generating diverse training data
 
     The engine can be instantiated multiple times with different parameters
     to enable self-play scenarios for training data generation.
     """
 
-    # ELO rating bounds supported by Stockfish
-    MIN_ELO = 1320
-    MAX_ELO = 3190
-
     def __init__(
         self,
         max_depth: int = 20,
         time_limit: Optional[float] = None,
-        elo_rating: Optional[int] = None,
-        skill_level: Optional[int] = None,
         threads: int = 1,
         hash_size: int = 16,
         randomness_config: Optional[dict] = None,
@@ -100,13 +95,13 @@ class ChessEngine:
         Initialize Stockfish wrapper engine.
 
         Args:
-            max_depth: Search depth (default: 20, good balance for Stockfish)
-            time_limit: Time limit per move in seconds (measured but not strictly enforced by Stockfish)
-            elo_rating: Limit Stockfish to specific ELO (1320-3190, None = full strength ~3190)
-            skill_level: Alternative strength control 0-20 (None = full strength)
+            max_depth: Search depth for depth-based mode (default: 20)
+            time_limit: Time per move in seconds. If set, uses TIME-BASED mode.
+                        If None, uses DEPTH-BASED mode with max_depth.
             threads: Number of CPU threads (default: 1)
             hash_size: Hash table size in MB (default: 16)
-            randomness_config: Dictionary controlling move selection randomness:
+            randomness_config: Dictionary controlling move selection randomness
+                               (only used in DEPTH-BASED mode):
                 {
                     'enabled': bool,              # Enable randomness (default: False)
                     'best_move_weight': float,    # Probability for best move (default: 0.7)
@@ -116,29 +111,33 @@ class ChessEngine:
             stockfish_path: Path to Stockfish binary (default: auto-detect)
 
         Raises:
-            ValueError: If ELO rating is out of valid range or randomness weights invalid
+            ValueError: If randomness weights don't sum to 1.0
         """
         self.max_depth = max_depth
         self.time_limit = time_limit
-        self.stockfish_path = stockfish_path
         self.threads = threads
         self.hash_size = hash_size
 
-        # Validate and store ELO rating
-        if elo_rating is not None:
-            if elo_rating < self.MIN_ELO or elo_rating > self.MAX_ELO:
-                raise ValueError(
-                    f"ELO rating must be between {self.MIN_ELO} and {self.MAX_ELO}, "
-                    f"got {elo_rating}"
-                )
-        self.elo_rating = elo_rating
-        self.skill_level = skill_level
+        # Auto-detect stockfish path
+        if stockfish_path is None:
+            script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            self.stockfish_path = os.path.join(script_dir, "data/stockfish-windows-x86-64-avx2.exe")
+        else:
+            self.stockfish_path = stockfish_path
 
-        # Parse randomness configuration
+        # Persistent Stockfish instance for time-based mode (avoid re-initialization overhead)
+        self._stockfish_instance = None
+        if self.time_limit is not None:
+            self._stockfish_instance = Stockfish(
+                path=self.stockfish_path,
+                parameters={"Threads": self.threads, "Hash": self.hash_size}
+            )
+
+        # Parse randomness configuration (only for depth-based mode)
         self.randomness_enabled = False
         self.move_weights = [1.0, 0.0, 0.0]  # Default: always pick best move
 
-        if randomness_config:
+        if randomness_config and time_limit is None:  # Randomness only in depth-based mode
             self.randomness_enabled = randomness_config.get('enabled', False)
             if self.randomness_enabled:
                 weights = [
@@ -238,12 +237,14 @@ class ChessEngine:
         Search for best move in position using Stockfish.
 
         This is the main interface method called by the tournament system.
-        Supports both depth-based and time-based control, with randomness for
-        generating diverse training data.
+
+        Two modes:
+        - TIME-BASED: If time_limit is set, uses get_best_move_time() for strict time control
+        - DEPTH-BASED: If time_limit is None, uses get_top_moves() with optional randomness
 
         Args:
             board: Chess position to analyze
-            depth: Search depth override (uses max_depth if None)
+            depth: Search depth override (uses max_depth if None, only for depth-based mode)
 
         Returns:
             SearchResult with best move and evaluation, or None if no legal moves
@@ -254,6 +255,66 @@ class ChessEngine:
         if not any(board.legal_moves):
             return None
 
+        # TIME-BASED MODE: Use get_best_move_time() for strict time control
+        if self.time_limit is not None:
+            return self._search_time_based(board, start_time)
+
+        # DEPTH-BASED MODE: Use get_top_moves() with optional randomness
+        return self._search_depth_based(board, depth, start_time)
+
+    def _search_time_based(self, board: chess.Board, start_time: float) -> SearchResult:
+        """
+        Time-based search using get_best_move_time().
+        Returns best move within the specified time limit.
+        Uses persistent Stockfish instance for speed.
+        """
+        # Convert seconds to milliseconds
+        time_ms = int(self.time_limit * 1000)
+
+        # Use persistent Stockfish instance
+        sf = self._stockfish_instance
+
+        # Set position
+        sf.set_fen_position(board.fen())
+
+        # Get best move with time limit
+        best_move_uci = sf.get_best_move_time(time_ms)
+
+        if best_move_uci is None:
+            # Fallback to any legal move
+            best_move = list(board.legal_moves)[0]
+            score = 0
+        else:
+            best_move = chess.Move.from_uci(best_move_uci)
+
+            # Get evaluation
+            eval_info = sf.get_evaluation()
+            if eval_info['type'] == 'cp':
+                score = eval_info['value']
+            elif eval_info['type'] == 'mate':
+                score = 100000 - abs(eval_info['value']) if eval_info['value'] > 0 else -100000 + abs(eval_info['value'])
+            else:
+                score = 0
+
+            # Adjust score for black's perspective
+            if board.turn == chess.BLACK:
+                score = -score
+
+        time_spent = time.time() - start_time
+
+        return SearchResult(
+            best_move=best_move,
+            score=score,
+            depth=0,  # Depth not tracked in time-based mode
+            nodes_searched=0,  # Nodes not tracked in time-based mode
+            time_spent=time_spent
+        )
+
+    def _search_depth_based(self, board: chess.Board, depth: Optional[int], start_time: float) -> SearchResult:
+        """
+        Depth-based search using get_top_moves() with optional randomness.
+        Good for generating diverse training data.
+        """
         # Determine search depth
         if depth is None:
             depth = self.max_depth
@@ -262,8 +323,6 @@ class ChessEngine:
         with StockfishAnalyzer(
             stockfish_path=self.stockfish_path,
             depth=depth,
-            elo_rating=self.elo_rating,
-            skill_level=self.skill_level,
             threads=self.threads,
             hash_size=self.hash_size
         ) as analyzer:
@@ -285,9 +344,7 @@ class ChessEngine:
                 )
             else:
                 # Fallback: use best_move from analysis
-                # (shouldn't happen if there are legal moves)
                 selected_move = analysis.best_move
-                # Rough score estimate from evaluation
                 score = int(analysis.evaluation * 100)
                 if board.turn == chess.BLACK:
                     score = -score
@@ -297,7 +354,6 @@ class ChessEngine:
             if analysis.verbose_stats:
                 nodes = analysis.verbose_stats.nodes
 
-        # Calculate actual time spent (including Stockfish overhead)
         time_spent = time.time() - start_time
 
         return SearchResult(
@@ -325,25 +381,33 @@ class ChessEngine:
 if __name__ == "__main__":
     # Basic test
     print("Testing Stockfish Son Chess Engine...")
+    print("=" * 50)
 
     board = chess.Board()
 
-    # Test 1: Basic search
-    print("\nTest 1: Basic search at starting position")
-    engine = ChessEngine(max_depth=15, elo_rating=2000)
-    result = engine.search(board)
+    # Test 1: Time-based mode
+    print("\nTest 1: TIME-BASED mode (0.1 seconds per move)")
+    engine_time = ChessEngine(time_limit=0.1)
+    result = engine_time.search(board)
+    if result:
+        print(f"  Best move: {result.best_move}")
+        print(f"  Score: {result.score}")
+        print(f"  Time: {result.time_spent:.3f}s (target: 0.1s)")
+
+    # Test 2: Depth-based without randomness
+    print("\nTest 2: DEPTH-BASED mode (depth=10, no randomness)")
+    engine_depth = ChessEngine(max_depth=10)
+    result = engine_depth.search(board)
     if result:
         print(f"  Best move: {result.best_move}")
         print(f"  Score: {result.score}")
         print(f"  Depth: {result.depth}")
-        print(f"  Nodes: {result.nodes_searched:,}")
         print(f"  Time: {result.time_spent:.3f}s")
 
-    # Test 2: With randomness
-    print("\nTest 2: Search with randomness enabled")
+    # Test 3: Depth-based with randomness
+    print("\nTest 3: DEPTH-BASED mode (depth=10, WITH randomness)")
     engine_random = ChessEngine(
-        max_depth=15,
-        elo_rating=1800,
+        max_depth=10,
         randomness_config={
             'enabled': True,
             'best_move_weight': 0.6,
@@ -361,4 +425,5 @@ if __name__ == "__main__":
     print(f"  Moves from 5 searches: {moves}")
     print(f"  Unique moves: {len(set(moves))}/5")
 
-    print("\nEngine tests complete!")
+    print("\n" + "=" * 50)
+    print("Engine tests complete!")
