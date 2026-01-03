@@ -123,16 +123,54 @@
 ## 4. Model 1 - Classical ML
 
 ### 4.1 Architecture
-[Algorithm - decision trees? gradient boosting?]
 
-### 4.2 Policy (Move Selection)
-[How model chooses a move]
+Two separate **Gradient Boosting** models (Actor-Critic pattern):
+- **Actor model** - for move selection (Policy)
+- **Critic model** - for position evaluation (Value)
 
-### 4.3 Value (Position Evaluation)
-[How model evaluates a position]
+Why Gradient Boosting:
+- Works well with hand-crafted features
+- Fast inference (important for real-time play)
+- Easy to interpret and debug
+- No GPU required
+
+### 4.2 Policy (Move Selection) - Actor
+
+**Input:** Feature vector of current position + candidate move
+**Output:** Score for how good this move is
+
+**How it works:**
+1. Generate all legal moves
+2. For each move, create features of resulting position
+3. Actor scores each (position, move) pair
+4. Choose move with highest score (or sample probabilistically for exploration)
+
+**Training:**
+- Moves from winning games get positive signal
+- Moves from losing games get negative signal
+- Critic's evaluation helps refine the signal
+
+### 4.3 Value (Position Evaluation) - Critic
+
+**Input:** Feature vector of position
+**Output:** Number between 0-1 (expected game result from this position)
+
+**How it works:**
+1. Extract features from current position
+2. Critic outputs evaluation (0 = losing, 0.5 = equal, 1 = winning)
+
+**Training:**
+- TD(λ) learning - update based on difference between predicted value and actual outcome
+- Learn from game results, propagate backwards through positions
 
 ### 4.4 Training
-[Training process]
+
+**Training Loop:**
+1. Play games using current Actor (with exploration)
+2. Collect (position, move, result) tuples
+3. Update Critic using TD learning on position values
+4. Update Actor using Critic's feedback on move quality
+5. Repeat
 
 ---
 
@@ -154,17 +192,89 @@
 
 ## 6. Reinforcement Learning
 
-### 6.1 Algorithm
-[Which RL algorithm]
+### 6.1 Algorithm: Actor-Critic
+
+We use **Actor-Critic** - two models working together:
+
+**Actor (Policy):**
+- Chooses moves
+- "What's the best move?"
+
+**Critic (Value):**
+- Evaluates positions
+- "How good is this position?"
+
+**How they work together:**
+1. Actor chooses a move
+2. We reach a new position
+3. Critic evaluates: "new position is better/worse than expected"
+4. Actor learns: "the move I chose was good/bad" (based on Critic's feedback)
+5. Critic learns: "my evaluation was accurate/inaccurate" (based on game result)
+
+**Why Actor-Critic:**
+- Actor doesn't need to wait until game end to learn
+- Critic gives immediate feedback on each move
+- Solves the credit assignment problem - if Critic says "position got worse", Actor knows last move was bad
 
 ### 6.2 Reward
-[What's the reward - only win? intermediate rewards?]
+
+**Sparse reward (game result only):**
+- Win = 1, Loss = 0, Draw = 0.5
+- No intermediate rewards
+
+**The Credit Assignment Problem:**
+- Game ends after 40 moves in a loss
+- Move 5 was excellent, move 35 was the blunder
+- Both get "labeled" as loss
+
+**Solution:** The Critic solves this by learning position values over many games. Good moves will appear in winning positions more often, bad moves in losing positions.
 
 ### 6.3 Self-play
-[How model plays against itself]
+
+The model improves by playing against itself:
+
+1. **Current best model** plays as both white and black
+2. Games are played with some **exploration** (not always choosing the "best" move)
+3. All positions and moves are recorded
+4. After batch of games, models are updated
+5. New model becomes "current best" if it's stronger
+
+**Exploration strategies:**
+- ε-greedy: with probability ε, choose random move instead of best
+- Softmax: sample moves proportionally to their scores
+- Add noise to evaluations
 
 ### 6.4 Training Loop
-[Full iteration process]
+
+**Full training iteration:**
+
+```
+1. PLAY PHASE
+   - Play N games (self-play)
+   - Record: (position, move, game_result) for each move
+
+2. LEARN PHASE
+   - Update Critic:
+     * For each position, target = actual game result
+     * Minimize prediction error using TD(λ)
+   - Update Actor:
+     * For each (position, move), compute advantage = Critic(new_pos) - Critic(old_pos)
+     * If advantage > 0: reinforce this move
+     * If advantage < 0: discourage this move
+
+3. EVALUATE PHASE
+   - New model plays against old model
+   - If win rate > threshold: accept new model
+   - Otherwise: keep old model
+
+4. REPEAT
+```
+
+**Key hyperparameters:**
+- Games per iteration
+- Learning rate
+- Exploration rate (decay over time)
+- TD(λ) lambda value
 
 ---
 
