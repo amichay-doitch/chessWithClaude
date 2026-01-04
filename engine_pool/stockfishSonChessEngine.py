@@ -130,6 +130,7 @@ class ChessEngine:
         if self.time_limit is not None:
             self._stockfish_instance = Stockfish(
                 path=self.stockfish_path,
+                depth=self.max_depth,
                 parameters={"Threads": self.threads, "Hash": self.hash_size}
             )
 
@@ -264,8 +265,8 @@ class ChessEngine:
 
     def _search_time_based(self, board: chess.Board, start_time: float) -> SearchResult:
         """
-        Time-based search using get_best_move_time().
-        Returns best move within the specified time limit.
+        Time-based search with both time and depth limits.
+        Returns best move within the specified time limit OR depth limit (whichever is hit first).
         Uses persistent Stockfish instance for speed.
         """
         # Convert seconds to milliseconds
@@ -274,14 +275,13 @@ class ChessEngine:
         # Use persistent Stockfish instance
         sf = self._stockfish_instance
 
-        # Set depth limit (search stops at whichever limit is hit first: time or depth)
-        sf.set_depth(self.max_depth)
-
         # Set position
         sf.set_fen_position(board.fen())
 
-        # Get best move with time limit
-        best_move_uci = sf.get_best_move_time(time_ms)
+        # Send custom go command with both depth and movetime limits
+        # Stockfish will stop when EITHER limit is reached
+        sf._put(f"go depth {self.max_depth} movetime {time_ms}")
+        best_move_uci = sf._get_best_move_from_sf_popen_process()
 
         if best_move_uci is None:
             # Fallback to any legal move

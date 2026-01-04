@@ -7,9 +7,11 @@ import chess
 import chess.pgn
 import sys
 import os
+import time
 from typing import Optional, List, Tuple
 from pathlib import Path
 from tkinter import Tk, filedialog
+from stockfish import Stockfish
 from gui_utils import (
     Button, ChessBoardRenderer,
     WHITE, BLACK, LIGHT_SQUARE, DARK_SQUARE, LAST_MOVE,
@@ -61,6 +63,12 @@ class PGNViewer:
         # Game info
         self.game_info = {}
 
+        # Stockfish analysis
+        self.sf_time_limit = 1.0  # seconds
+        self.sf_depth_limit = 10
+        self.sf_result = None  # Analysis result dict
+        self.stockfish = None  # Stockfish instance
+
         # Create board renderer
         self.board_renderer = ChessBoardRenderer(SQUARE_SIZE)
 
@@ -90,6 +98,21 @@ class PGNViewer:
 
         self.back_btn = Button(panel_x, button_y + button_height + spacing,
                               4 * button_width + 3 * spacing, 40, "Back to File Selection", ORANGE)
+
+        # Stockfish analysis controls - bottom right corner, below back button
+        analysis_y = button_y + button_height + spacing + 50
+        small_btn_width = 40
+
+        # Time controls: [-] [value] [+]
+        self.time_minus_btn = Button(panel_x, analysis_y, small_btn_width, 30, "-", BUTTON_COLOR)
+        self.time_plus_btn = Button(panel_x + 120, analysis_y, small_btn_width, 30, "+", BUTTON_COLOR)
+
+        # Depth controls: [-] [value] [+]
+        self.depth_minus_btn = Button(panel_x + 180, analysis_y, small_btn_width, 30, "-", BUTTON_COLOR)
+        self.depth_plus_btn = Button(panel_x + 300, analysis_y, small_btn_width, 30, "+", BUTTON_COLOR)
+
+        # Analyze button
+        self.analyze_btn = Button(panel_x, analysis_y + 35, 340, 40, "Analyze Position", GREEN)
 
     def browse_file(self):
         """Open file dialog to select PGN file."""
@@ -230,6 +253,53 @@ class PGNViewer:
             self.board.push(move)
             self.last_move = move
 
+    def analyze_position(self):
+        """Run Stockfish analysis on current position with configured time and depth."""
+        if self.board is None:
+            return
+
+        # Initialize Stockfish if needed
+        if self.stockfish is None:
+            # Get path to Stockfish executable
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            stockfish_path = os.path.join(script_dir, "data", "stockfish-windows-x86-64-avx2.exe")
+            self.stockfish = Stockfish(path=stockfish_path)
+
+        # Set position
+        self.stockfish.set_fen_position(self.board.fen())
+
+        # Run analysis with both depth and time limits
+        # Using custom go command so both limits are respected (whichever is hit first)
+        start = time.time()
+        time_ms = int(self.sf_time_limit * 1000)
+        self.stockfish._put(f"go depth {self.sf_depth_limit} movetime {time_ms}")
+        best_move_uci = self.stockfish._get_best_move_from_sf_popen_process()
+        time_taken = time.time() - start
+
+        # Get evaluation
+        eval_info = self.stockfish.get_evaluation()
+
+        # Convert move to SAN for display
+        best_move_san = None
+        if best_move_uci:
+            try:
+                move = chess.Move.from_uci(best_move_uci)
+                best_move_san = self.board.san(move)
+            except:
+                best_move_san = best_move_uci
+
+        # Store result
+        self.sf_result = {
+            'move_uci': best_move_uci,
+            'move_san': best_move_san,
+            'eval': eval_info,
+            'time_taken': time_taken,
+            'depth_limit': self.sf_depth_limit,
+            'time_limit': self.sf_time_limit
+        }
+
+        print(f"Analysis: {best_move_san} | Eval: {eval_info} | Time: {time_taken:.3f}s (limit: {self.sf_time_limit}s) | Depth limit: {self.sf_depth_limit}")
+
     def draw_board(self):
         """Draw the chess board."""
         board_y = (SCREEN_HEIGHT - BOARD_SIZE) // 2
@@ -347,6 +417,73 @@ class PGNViewer:
         self.end_btn.draw(self.screen, self.font)
         self.back_btn.draw(self.screen, self.small_font)
 
+        # Draw analysis controls
+        self.draw_analysis_controls()
+
+    def draw_analysis_controls(self):
+        """Draw Stockfish analysis controls and results."""
+        panel_x = BOARD_SIZE + 50
+        button_y = SCREEN_HEIGHT - 200
+        button_height = 45
+        spacing = 10
+        analysis_y = button_y + button_height + spacing + 50
+
+        # Draw background box for analysis section (bottom right)
+        box_height = 120 if not self.sf_result else 145
+        analysis_box = pygame.Rect(panel_x - 5, analysis_y - 25, 350, box_height)
+        pygame.draw.rect(self.screen, (220, 230, 240), analysis_box, border_radius=8)
+        pygame.draw.rect(self.screen, (100, 100, 100), analysis_box, 2, border_radius=8)
+
+        # Section title
+        title = self.small_font.render("Stockfish Analysis", True, (50, 50, 50))
+        self.screen.blit(title, (panel_x + 100, analysis_y - 20))
+
+        # Draw time/depth buttons
+        self.time_minus_btn.draw(self.screen, self.font)
+        self.time_plus_btn.draw(self.screen, self.font)
+        self.depth_minus_btn.draw(self.screen, self.font)
+        self.depth_plus_btn.draw(self.screen, self.font)
+        self.analyze_btn.draw(self.screen, self.font)
+
+        # Draw labels and values (dark text for visibility)
+        label_color = (30, 30, 30)
+        label_y = analysis_y + 5
+
+        # Time label and value
+        time_label = self.small_font.render("Time:", True, label_color)
+        self.screen.blit(time_label, (panel_x + 45, label_y))
+        time_value = self.font.render(f"{self.sf_time_limit:.1f}s", True, label_color)
+        self.screen.blit(time_value, (panel_x + 80, label_y - 2))
+
+        # Depth label and value
+        depth_label = self.small_font.render("Depth:", True, label_color)
+        self.screen.blit(depth_label, (panel_x + 220, label_y))
+        depth_value = self.font.render(f"{self.sf_depth_limit}", True, label_color)
+        self.screen.blit(depth_value, (panel_x + 265, label_y - 2))
+
+        # Draw analysis result if available (compact, inside the box)
+        if self.sf_result:
+            result_y = analysis_y + 80
+
+            # Best move and eval on same line
+            move_text = f"Best: {self.sf_result['move_san']}"
+            move_surface = self.font.render(move_text, True, (0, 100, 0))
+            self.screen.blit(move_surface, (panel_x + 5, result_y))
+
+            # Evaluation next to move
+            eval_info = self.sf_result['eval']
+            if eval_info['type'] == 'cp':
+                eval_text = f"({eval_info['value'] / 100:+.2f})"
+            else:
+                eval_text = f"(M{eval_info['value']})"
+            eval_surface = self.small_font.render(eval_text, True, (50, 50, 50))
+            self.screen.blit(eval_surface, (panel_x + 120, result_y + 3))
+
+            # Time taken vs limit
+            time_text = f"Time: {self.sf_result['time_taken']:.3f}s/{self.sf_result['time_limit']:.1f}s | Depth: {self.sf_result['depth_limit']}"
+            time_surface = self.tiny_font.render(time_text, True, (80, 80, 80))
+            self.screen.blit(time_surface, (panel_x + 5, result_y + 22))
+
     def draw_panel(self):
         """Draw information panel."""
         panel_x = BOARD_SIZE + 50  # Leave space for eval bar
@@ -453,6 +590,26 @@ class PGNViewer:
             self.game = None
             self.board = None
             pygame.display.set_caption("PGN Viewer")
+
+        # Analysis controls
+        if self.time_minus_btn.handle_event(event):
+            self.sf_time_limit = max(0.1, self.sf_time_limit - 0.5)
+            self.sf_result = None  # Clear previous result
+
+        if self.time_plus_btn.handle_event(event):
+            self.sf_time_limit = min(10.0, self.sf_time_limit + 0.5)
+            self.sf_result = None
+
+        if self.depth_minus_btn.handle_event(event):
+            self.sf_depth_limit = max(1, self.sf_depth_limit - 1)
+            self.sf_result = None
+
+        if self.depth_plus_btn.handle_event(event):
+            self.sf_depth_limit = min(30, self.sf_depth_limit + 1)
+            self.sf_result = None
+
+        if self.analyze_btn.handle_event(event):
+            self.analyze_position()
 
         # Keyboard shortcuts
         if event.type == pygame.KEYDOWN:
