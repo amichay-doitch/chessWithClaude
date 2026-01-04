@@ -274,6 +274,9 @@ class ChessEngine:
         # Use persistent Stockfish instance
         sf = self._stockfish_instance
 
+        # Set depth limit (search stops at whichever limit is hit first: time or depth)
+        sf.set_depth(self.max_depth)
+
         # Set position
         sf.set_fen_position(board.fen())
 
@@ -305,7 +308,7 @@ class ChessEngine:
         return SearchResult(
             best_move=best_move,
             score=score,
-            depth=0,  # Depth not tracked in time-based mode
+            depth=self.max_depth,  # Max depth limit used
             nodes_searched=0,  # Nodes not tracked in time-based mode
             time_spent=time_spent
         )

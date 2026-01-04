@@ -107,7 +107,7 @@ class TournamentRunner:
             depth: Search depth
 
         Returns:
-            Descriptive name like "stockfishSonChessEngine_T0.5" or "stockfishSonChessEngine_D10_R0.5"
+            Descriptive name like "stockfishSonChessEngine_T100ms_D15" or "stockfishSonChessEngine_D10_R50"
         """
         # Start with base module name (strip 'engine_pool.' prefix if present)
         base_name = module_name.replace('engine_pool.', '')
@@ -116,9 +116,9 @@ class TournamentRunner:
         if time_limit is not None:
             time_ms = int(time_limit * 1000)
             base_name += f"_T{time_ms}ms"
-        else:
-            # Add depth for depth-based mode
-            base_name += f"_D{depth}"
+
+        # Always add depth (both time and depth are enforced now)
+        base_name += f"_D{depth}"
 
         # Add randomness if specified - use integer percentage to avoid decimal points
         if random_level is not None and random_level > 0:
@@ -331,18 +331,13 @@ class TournamentRunner:
         self.stats["longest_game"] = max(self.stats["longest_game"], moves)
         self.stats["shortest_game"] = min(self.stats["shortest_game"], moves)
 
-        # Determine winner
-        if result == "1-0":
-            winner = white_name
-        elif result == "0-1":
-            winner = white_name if white_name == self.engine2_module else self.engine1_module
-            winner = self.engine2_module if white_name == self.engine1_module else self.engine1_module
-        else:
-            winner = None
+        # Determine if engine1 is white (compare display names)
+        engine1_is_white = (white_name == self.engine1_display_name)
 
         # Update engine statistics
         if result == "1-0":
-            if white_name == self.engine1_module:
+            # White won
+            if engine1_is_white:
                 self.stats["engine1"]["wins"] += 1
                 self.stats["engine1"]["wins_as_white"] += 1
                 self.stats["engine2"]["losses"] += 1
@@ -351,11 +346,14 @@ class TournamentRunner:
                 self.stats["engine2"]["wins_as_white"] += 1
                 self.stats["engine1"]["losses"] += 1
         elif result == "0-1":
-            if white_name == self.engine1_module:
+            # Black won
+            if engine1_is_white:
+                # Engine1 is white, so engine2 (black) won
                 self.stats["engine2"]["wins"] += 1
                 self.stats["engine2"]["wins_as_black"] += 1
                 self.stats["engine1"]["losses"] += 1
             else:
+                # Engine2 is white, so engine1 (black) won
                 self.stats["engine1"]["wins"] += 1
                 self.stats["engine1"]["wins_as_black"] += 1
                 self.stats["engine2"]["losses"] += 1
@@ -365,7 +363,7 @@ class TournamentRunner:
 
         # Update time/nodes if available
         if "white_stats" in game_result and game_result["white_stats"]:
-            if white_name == self.engine1_module:
+            if engine1_is_white:
                 self.stats["engine1"]["total_time"] += game_result["white_stats"]["avg_time"] * game_result["white_stats"]["total_moves"]
                 self.stats["engine1"]["total_nodes"] += game_result["white_stats"]["avg_nodes"] * game_result["white_stats"]["total_moves"]
                 self.stats["engine1"]["total_moves"] += game_result["white_stats"]["total_moves"]
@@ -375,12 +373,13 @@ class TournamentRunner:
                 self.stats["engine2"]["total_moves"] += game_result["white_stats"]["total_moves"]
 
         if "black_stats" in game_result and game_result["black_stats"]:
-            black_name = game_result["black_name"]
-            if black_name == self.engine1_module:
+            if not engine1_is_white:
+                # Engine1 is black
                 self.stats["engine1"]["total_time"] += game_result["black_stats"]["avg_time"] * game_result["black_stats"]["total_moves"]
                 self.stats["engine1"]["total_nodes"] += game_result["black_stats"]["avg_nodes"] * game_result["black_stats"]["total_moves"]
                 self.stats["engine1"]["total_moves"] += game_result["black_stats"]["total_moves"]
             else:
+                # Engine2 is black
                 self.stats["engine2"]["total_time"] += game_result["black_stats"]["avg_time"] * game_result["black_stats"]["total_moves"]
                 self.stats["engine2"]["total_nodes"] += game_result["black_stats"]["avg_nodes"] * game_result["black_stats"]["total_moves"]
                 self.stats["engine2"]["total_moves"] += game_result["black_stats"]["total_moves"]
