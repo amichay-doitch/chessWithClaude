@@ -6,9 +6,61 @@ import argparse
 import chess
 import time
 import importlib
+import os
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from game_recorder import GameRecorder
+
+
+# Enable ANSI colors on Windows
+if os.name == 'nt':
+    os.system('')  # Enables ANSI escape sequences in Windows terminal
+
+
+# ANSI color codes
+class Colors:
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    # Piece colors
+    WHITE_PIECE = '\033[97m'  # Bright white
+    BLACK_PIECE = '\033[33m'  # Yellow/gold for black pieces
+    # Square colors (background)
+    LIGHT_SQUARE = '\033[48;5;180m'  # Light tan background
+    DARK_SQUARE = '\033[48;5;94m'    # Brown background
+    # Move info colors
+    WHITE_MOVE = '\033[96m'   # Cyan for white's move
+    BLACK_MOVE = '\033[93m'   # Yellow for black's move
+
+
+def print_colored_board(board: chess.Board) -> None:
+    """Print the chess board with colored pieces and squares."""
+    piece_symbols = {
+        'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
+        'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟',
+    }
+
+    print()
+    for rank in range(7, -1, -1):
+        row = f" {rank + 1} "
+        for file in range(8):
+            square = chess.square(file, rank)
+            piece = board.piece_at(square)
+
+            # Determine square color
+            is_light = (rank + file) % 2 == 1
+            bg_color = Colors.LIGHT_SQUARE if is_light else Colors.DARK_SQUARE
+
+            if piece:
+                # Determine piece color
+                piece_color = Colors.WHITE_PIECE if piece.color == chess.WHITE else Colors.BLACK_PIECE
+                symbol = piece_symbols.get(piece.symbol(), piece.symbol())
+                row += f"{bg_color}{piece_color}{Colors.BOLD} {symbol} {Colors.RESET}"
+            else:
+                row += f"{bg_color}   {Colors.RESET}"
+
+        print(row)
+
+    print("    a  b  c  d  e  f  g  h")
 
 
 class TournamentRunner:
@@ -22,7 +74,8 @@ class TournamentRunner:
                  output_dir: str = "games",
                  quiet: bool = False,
                  random_level1: Optional[float] = None,
-                 random_level2: Optional[float] = None):
+                 random_level2: Optional[float] = None,
+                 present: bool = False):
         """
         Initialize tournament runner.
 
@@ -38,6 +91,7 @@ class TournamentRunner:
             quiet: Minimize output
             random_level1: Randomness level for engine 1 (0-1, uses depth-based search)
             random_level2: Randomness level for engine 2 (0-1, uses depth-based search)
+            present: Show board after every move with move number and engine name
         """
         self.engine1_module = engine1_module
         self.engine2_module = engine2_module
@@ -49,6 +103,7 @@ class TournamentRunner:
         self.random_level2 = random_level2
         self.num_games = num_games
         self.quiet = quiet
+        self.present = present
 
         # Create descriptive names for engines (include time/randomness if specified)
         self.engine1_display_name = self._create_engine_name(engine1_module, time1, random_level1, depth1)
@@ -208,9 +263,14 @@ class TournamentRunner:
                     result = white_engine.search(board.copy())
                     if result and result.best_move:
                         move_annotations.append((result.best_move, result, chess.WHITE))
+                        move_san = board.san(result.best_move)
                         board.push(result.best_move)
                         white_times.append(result.time_spent)
                         white_nodes_list.append(result.nodes_searched)
+                        if self.present:
+                            move_number = (move_count // 2) + 1
+                            print(f"\n{Colors.WHITE_MOVE}{Colors.BOLD}{move_number}. {move_san}{Colors.RESET} - {white_name}")
+                            print_colored_board(board)
                     else:
                         # Engine failed to find move
                         return self._handle_error(game_number, board, white_name, black_name, "white_error")
@@ -218,9 +278,14 @@ class TournamentRunner:
                     result = black_engine.search(board.copy())
                     if result and result.best_move:
                         move_annotations.append((result.best_move, result, chess.BLACK))
+                        move_san = board.san(result.best_move)
                         board.push(result.best_move)
                         black_times.append(result.time_spent)
                         black_nodes_list.append(result.nodes_searched)
+                        if self.present:
+                            move_number = (move_count // 2) + 1
+                            print(f"\n{Colors.BLACK_MOVE}{Colors.BOLD}{move_number}... {move_san}{Colors.RESET} - {black_name}")
+                            print_colored_board(board)
                     else:
                         # Engine failed to find move
                         return self._handle_error(game_number, board, white_name, black_name, "black_error")
@@ -531,6 +596,7 @@ def main():
     parser.add_argument("--output-dir", default="games", help="Output directory for games")
     parser.add_argument("--quiet", action="store_true", help="Minimize output")
     parser.add_argument("--quick", action="store_true", help="Quick test (10 games)")
+    parser.add_argument("--present", action="store_true", help="Show board after every move with move number and engine name")
 
     args = parser.parse_args()
 
@@ -546,7 +612,8 @@ def main():
         num_games=args.games,
         output_dir=args.output_dir,
         quiet=args.quiet,
-        random_level1=args.random_level1, random_level2=args.random_level2
+        random_level1=args.random_level1, random_level2=args.random_level2,
+        present=args.present
     )
 
     tournament.run_tournament()
