@@ -1,7 +1,22 @@
 # Next Session Plan - ML Chess Engine Implementation
 
+## Completed This Session (2026-01-07)
+✅ **Feature Design Enhanced:**
+- Added 5 critical features to section 3:
+  - King tropism (attacking piece distances to enemy king)
+  - Attacker/defender ratio around king
+  - Back rank weakness detection
+  - Rook behind passed pawn (Tarrasch rule)
+  - Development count (pieces moved from starting squares)
+- Created new feature categories:
+  - 3.6 Endgame-Specific Features (8 features)
+  - 3.7 King Attack Features (6 features)
+  - 3.10 Piece Coordination (10 features)
+- Updated feature count estimate: ~100-150 features for Model 1
+- All features are computable and suitable for Gradient Boosting
+
 ## Current Status
-- Design document complete for sections 3 (Features), 4 (Model 1), 6 (RL)
+- Design document complete for sections 3 (Features - ENHANCED), 4 (Model 1), 6 (RL)
 - Sections still placeholder: 1, 2, 5, 7, 8, 9, 10
 
 ## Priority for Next Session
@@ -47,7 +62,7 @@
 - Verify it beats random consistently
 
 ## Questions to Resolve
-- [ ] Which features to implement first?
+- [x] Which features to implement first? → All ~100-150 features defined in design doc
 - [ ] How to represent moves as features for Actor?
 - [ ] Storage format for game data?
 - [ ] How many games for initial training?

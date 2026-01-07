@@ -64,13 +64,31 @@
 - **King activity** (in endgame, active king is crucial)
 - **Opposition** - king positions in pawn endgames
 
-### 3.6 Threats & Attacks
+### 3.6 Endgame-Specific Features
+- **King centralization score** - distance of king from center (active king is critical in endgames)
+- **Pawn race calculation** - who promotes first if both sides push passed pawns
+- **Key squares control** - control of squares on promotion path (e.g., for king to stop/support pawn)
+- **Rook behind passed pawn** - rook supporting own passed pawn from behind (huge advantage), or rook behind enemy passed pawn (restrains it)
+- **Wrong bishop + rook pawn** - bishop can't control promotion square (drawing pattern)
+- **Fortress indicators** - defensive setup that holds despite material deficit
+- **Zugzwang indicators** - positions where having to move is a disadvantage
+- **Tablebase-like patterns** - known theoretical positions (KQvK, KRvK, etc.)
+
+### 3.7 King Attack Features
+- **King tropism** - sum of distances of attacking pieces to enemy king (closer = more dangerous)
+- **Attacker count vs defender count** - ratio of pieces attacking king zone vs defending it
+- **Back rank weakness** - vulnerability to back rank mate (no escape squares, no defenders)
+- **Mating net indicators** - is king being cornered/trapped with few escape squares
+- **Queen proximity to king** - queen near enemy king is dangerous
+- **Safe checks available** - number of checking moves that don't lose the piece
+
+### 3.8 Threats & Attacks
 - In check?
 - Pieces under attack
 - Pieces attacking enemy pieces
 - **Tempo / Initiative** - who is attacking, who is defending
 
-### 3.7 Tactics
+### 3.9 Tactics
 - Forks (piece attacking 2+ enemy pieces)
 - Skewers (attack through valuable piece to piece behind)
 - Discovered attacks (moving piece reveals attack from another)
@@ -80,8 +98,25 @@
 - X-ray attacks (attacks through pieces along lines)
 - **Battery attacks** - two rooks on same file, or queen+rook, queen+bishop on diagonal
 - **Overloaded pieces** - piece defending too many things
+- **Deflection potential** - can a defender be lured away from its duty
+- **Interference patterns** - can we block a defensive piece's line
+- **Decoy opportunities** - can we lure a piece to a bad square
+- **Clearance sacrifices** - clearing a square or line for another piece
+- **Zwischenzug potential** - intermediate move opportunities before expected recapture
 
-### 3.8 Strategic Features
+### 3.10 Piece Coordination
+- **Development count** - number of pieces moved from starting squares
+- **Undeveloped pieces** - pieces still on back rank (penalty)
+- **Piece harmony** - pieces supporting each other vs blocking each other
+- **Minor piece coordination** - bishop+knight working together (e.g., knight controls squares bishop can't)
+- **Rooks connected** - both rooks on same rank/file with no pieces between
+- **Rooks doubled** - both rooks on same file (powerful)
+- **Queen-rook battery** - queen and rook aligned on file/rank
+- **Queen-bishop battery** - queen and bishop aligned on diagonal
+- **Knight on rim** - "knight on the rim is dim" (penalty for edge knights)
+- **Centralized pieces** - pieces controlling center squares
+
+### 3.11 Strategic Features
 
 **For Model 1 (Classical ML) - clear, countable features:**
 - Open vs closed position (number of open/semi-open files)
@@ -91,6 +126,11 @@
 - Pawn majority (kingside/queenside)
 - Control of open/semi-open files
 - **Color complex control** - control of light/dark squares
+- **Blockade** - piece blocking passed pawn (knight is best blocker)
+- **Minority attack** - fewer pawns attacking pawn majority (creates weaknesses)
+- **Weak color complex** - holes on one color (often due to bishop trade)
+- **Outpost squares** - squares that can't be attacked by enemy pawns
+- **Good knight vs bad bishop** - knight better in closed positions, bishop in open
 
 **For Model 2 (Neural Network) - more nuanced patterns:**
 - Good bishop vs bad bishop (pawns blocking bishop's color)
@@ -98,25 +138,31 @@
 - Weak squares (can't be defended by pawns)
 - Blockade (piece blocking passed pawn)
 - Knight vs Bishop (which is better in current position)
+- Prophylactic moves (preventing opponent's plans)
+- Piece exchanges when ahead/behind
 
 *Note: Neural network can learn subtle patterns from raw board representation. Classical ML needs explicit feature engineering.*
 
-### 3.9 Dynamic Features
+### 3.12 Dynamic Features
 - Repetition count (approaching draw?)
 - 50-move rule counter
 - Last move was capture/check? (momentum)
 - Who to move (tempo)
+- **Recent captures** - sequence of captures (exchanges happening)
+- **Tension in position** - pieces attacking each other but not capturing yet
 
-### 3.10 Board Representation
+### 3.13 Board Representation
 
 **For Model 1 (Classical ML):**
 - Feature vector of all above (some binary, some numeric)
-- Total ~50-100 features
+- Total ~100-150 features (expanded from original estimate)
+- Features should be normalized (0-1 range or standardized)
 
 **For Model 2 (Neural Network):**
 - Input planes like AlphaZero (8x8x12 channels for pieces)
 - History of positions (for repetition detection)
 - **HalfKP features** (king position + piece positions relative to king) - used in Stockfish NNUE
+- Attack/defense maps as additional planes
 
 ---
 
