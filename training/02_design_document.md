@@ -8,13 +8,201 @@
 ## 2. Data
 
 ### 2.1 Data Structure
-[What each record contains]
+
+Training data consists of **game trajectories** (sequences of positions) rather than isolated positions. This is essential for:
+- **TD learning** (Temporal Difference) - updating V(s) based on V(s')
+- **Advantage calculation** - V(new_position) - V(old_position)
+- **Credit assignment** - propagating game result backward through moves
+
+#### Game Record Schema
+
+```python
+TrainingGame:
+  # Game-level metadata
+  - game_id: str                    # Unique identifier (e.g., "20260107_selfplay_00042")
+  - result: float                   # {1.0, 0.5, 0.0} from white's perspective
+  - termination: str                # "checkmate" | "stalemate" | "insufficient_material" |
+                                    # "fifty_move_rule" | "threefold_repetition"
+  - total_plies: int                # Game length (half-moves)
+  - source: str                     # "self-play" | "engine-match" | "external"
+  - model_version: str              # Which model/engine generated this (e.g., "v1.0", "engine_v5")
+  - timestamp: str                  # ISO format (e.g., "2026-01-07T14:30:00Z")
+  - opening_name: str? (optional)   # ECO code if available (e.g., "Sicilian Defense")
+
+  # Position sequence
+  - positions: [
+      {
+        fen: str,                   # Full position (includes side to move, castling, en passant)
+        move_played: str,           # UCI format (e.g., "e2e4", "e7e8q")
+        ply: int,                   # Move number (0-indexed half-moves)
+
+        # Optional metadata (if available from engine):
+        search_depth: int?,         # Search depth used
+        time_spent_ms: float?,      # Thinking time in milliseconds
+        nodes_searched: int?,       # Number of nodes searched
+      },
+      ...
+    ]
+```
+
+#### What Each Model Needs
+
+**Critic (Position Evaluator):**
+- Input: FEN → extract features
+- Target: Game result (from side-to-move's perspective)
+- Per position: `(fen, side_to_move, game_result)`
+
+**Actor (Move Selector):**
+- Input: FEN → extract features, generate legal moves
+- Target: Move played + quality signal (from Critic)
+- Per position: `(fen, move_played, advantage)`
+
+#### Design Decisions
+
+**Store raw FEN, compute features on-the-fly:**
+- ✅ Small storage footprint
+- ✅ Flexibility to change feature extraction
+- ✅ Can experiment with different feature sets
+- ⚠️ Slightly slower training (mitigated by caching)
+
+**Alternative:** Pre-compute and store feature vectors
+- Only if profiling shows feature extraction is a bottleneck
+- Locks you into a specific feature set
+
+**Do NOT store legal_moves per position:**
+- Computed from FEN on-demand: `board = chess.Board(fen); legal_moves = list(board.legal_moves)`
+- Saves ~30-50 moves × 4 bytes × 1M positions = 120-200 MB
 
 ### 2.2 Data Collection
-[How we generate games]
+
+#### Phase 1: Initial Validation (1,000 games)
+**Goal:** Verify Critic can learn basic patterns (material advantage, checkmate vs stalemate)
+
+**Method:**
+- **Random move games** (fastest generation)
+- Or **engine_v3 vs random** (slightly better quality)
+- Games will be short (~20-50 moves), many decisive
+
+**Why:** Quick sanity check before investing in large-scale data collection
+
+#### Phase 2: First Real Training (10,000 games)
+**Goal:** Train Critic to evaluate middlegame positions, train Actor for basic move selection
+
+**Method:**
+- **engine_v5 self-play** with reduced depth (depth=3)
+- Or **mixed sources:** 50% engine_v5, 50% random
+- Opening diversity: Use opening book or start from positions after 5 random moves
+
+**Why:** Higher quality games than random, diverse positions
+
+#### Phase 3: Production Training (100,000+ games)
+**Goal:** Achieve competitive playing strength
+
+**Method:**
+- **Self-play with current best model** (RL iteration loop)
+- Exploration: ε-greedy (ε=0.1-0.2) or softmax sampling
+- Opening diversity: Opening book with 50+ variations
+
+**Why:** RL learns from its own mistakes, progressively harder opponents
+
+#### Data Generation Pipeline
+
+```
+1. Game Generator
+   ├─ Initialize engines/models (white, black)
+   ├─ Play game with exploration
+   ├─ Record: (fen, move_played, ply) for each position
+   └─ Save game result and metadata
+
+2. Data Storage
+   ├─ Format: JSON Lines (.jsonl) - one game per line
+   ├─ Location: training/data/games_YYYYMMDD.jsonl
+   └─ Append-only (no need to reload all data)
+
+3. Data Loading (during training)
+   ├─ Stream games from .jsonl (memory efficient)
+   ├─ Extract features on-the-fly from FEN
+   └─ Create training batches
+```
+
+#### Opening Diversity Strategy
+
+**Problem:** Starting from standard position every game → deterministic engines play identical games
+
+**Solutions:**
+1. **Opening book** - Start from ~50 book positions (after 3-6 moves)
+2. **Random starting moves** - Play 5-8 random legal moves before using engine
+3. **Fischer Random Chess (Chess960)** - Randomized back rank
+
+**Recommendation for Phase 1-2:** Random starting moves (simplest)
+**Recommendation for Phase 3:** Opening book (more realistic)
 
 ### 2.3 Data Volume
-[How many games needed, when to generate more]
+
+#### Storage Requirements
+
+**Per game estimate:**
+- Average game length: 40 moves (80 plies)
+- Per position: ~150 bytes (FEN + move + metadata)
+- Per game: 80 × 150 bytes = 12 KB
+- 1,000 games = 12 MB
+- 10,000 games = 120 MB
+- 100,000 games = 1.2 GB
+- 1,000,000 games = 12 GB
+
+**Conclusion:** Storage is NOT a constraint. Use raw FEN format.
+
+#### Training Data Requirements
+
+**For Gradient Boosting (Model 1):**
+
+| Phase | Games | Positions | Storage | Purpose |
+|-------|-------|-----------|---------|---------|
+| Validation | 1,000 | ~40,000 | 12 MB | Verify learning works |
+| Initial Training | 10,000 | ~400,000 | 120 MB | First real model |
+| Production | 100,000 | ~4,000,000 | 1.2 GB | Competitive strength |
+| Advanced | 1,000,000 | ~40,000,000 | 12 GB | Grandmaster level (aspirational) |
+
+**Why RL is data-hungry:**
+- Sparse reward (only game result, no intermediate feedback)
+- High variance (same position can lead to win or loss)
+- Need diverse positions (opening, middlegame, endgame)
+- Need diverse tactics (forks, pins, sacrifices, etc.)
+
+#### When to Generate More Data
+
+**Triggers for collecting more games:**
+
+1. **Model plateaus** - Win rate stops improving against baseline
+2. **Overfitting** - Training accuracy high, validation accuracy low
+3. **Narrow repertoire** - Model plays same openings/plans repeatedly
+4. **Weak in specific phases** - Poor endgame play → need more endgame positions
+
+**RL Training Loop:**
+- Don't pre-generate all data!
+- Generate data **iteratively** as model improves
+- Each iteration: Play 1,000-10,000 games with current model
+- Discard old data or weight recent games higher (curriculum learning)
+
+#### Data Quality vs Quantity
+
+**Better 10,000 high-quality games than 100,000 random games:**
+- High quality = diverse, non-trivial, from competent play
+- Random games are short, lack strategic depth
+- Phase 1 uses random for quick validation only
+- Phase 2+ uses engine/model-generated games
+
+#### Data Augmentation
+
+**Symmetry augmentation (8x data for free):**
+- Flip board horizontally (a1 ↔ h1)
+- Rotate 180° (swap colors, flip board)
+- Works because chess board is symmetric
+
+**Implementation:**
+- Apply during feature extraction, not storage
+- Each position becomes 8 training samples
+- Effective data volume: Multiply by 8x
 
 ---
 
